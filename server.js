@@ -22,7 +22,7 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(__dirname));
 
-if (!process.env.NETLIFY && !fs.existsSync('uploads')) fs.mkdirSync('uploads');
+if (!fs.existsSync('uploads')) fs.mkdirSync('uploads');
 
 // ========== CREAR TABLAS ==========
 async function initDB() {
@@ -286,7 +286,7 @@ app.get('/', (req, res) => {
 
 // INICIAR SERVIDOR (solo en local, no en Netlify)
 const PORT = process.env.PORT || 3001;
-if (!process.env.NETLIFY) app.listen(PORT, () => {
+app.listen(PORT, () => {
     console.log(`
 ╔════════════════════════════════════════╗
 ║   ✅ Facturas Cloud — PostgreSQL      ║
