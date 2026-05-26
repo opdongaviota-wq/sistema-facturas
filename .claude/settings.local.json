@@ -8,7 +8,22 @@
       "Bash(pkill -f \"node server.js\")",
       "Bash(node server.js)",
       "Bash(curl -s http://localhost:3001/api/pagos)",
-      "mcp__Claude_Preview__preview_start"
+      "mcp__Claude_Preview__preview_start",
+      "Bash(brew install *)",
+      "Bash(railway login *)",
+      "Bash(vercel login *)",
+      "Bash(pkill -f \"vercel login\")",
+      "Read(//usr/local/bin/**)",
+      "Read(//usr/local/Cellar/netlify-cli/**)",
+      "Bash(brew link *)",
+      "Bash(netlify --version)",
+      "Bash(curl -s -H \"Authorization: Bearer vnfp_GUWNzkG8j1FChrJ89vR2ZWacHWiMJbTG1a26\" https://api.netlify.com/api/v1/user)",
+      "Bash(node --input-type=module -e ' *)",
+      "Bash(curl -s -X PATCH -H 'Authorization: Bearer nfp_GUWNzkG8j1FChrJ89vR2ZWacHWiMJbTG1a26' -H 'Content-Type: application/json' -d '{\"build_settings\":{\"env\":{\"DATABASE_URL\":\"postgresql://neondb_owner:npg_ftTNjbF03Jqr@ep-floral-cake-apn5ydfy.c-7.us-east-1.aws.neon.tech/neondb?sslmode=require\",\"NETLIFY\":\"true\",\"NODE_ENV\":\"production\"}}}' https://api.netlify.com/api/v1/sites/4404dd02-1aa8-453a-abfe-ea1c257ddd79)",
+      "Bash(curl -s -X POST -H 'Authorization: Bearer nfp_GUWNzkG8j1FChrJ89vR2ZWacHWiMJbTG1a26' -H 'Content-Type: application/json' -d '[{\"key\":\"DATABASE_URL\",\"is_secret\":false,\"values\":[{\"value\":\"postgresql://neondb_owner:npg_ftTNjbF03Jqr@ep-floral-cake-apn5ydfy.c-7.us-east-1.aws.neon.tech/neondb?sslmode=require\",\"context\":\"all\"}]},{\"key\":\"NETLIFY\",\"is_secret\":false,\"values\":[{\"value\":\"true\",\"context\":\"all\"}]},{\"key\":\"NODE_ENV\",\"is_secret\":false,\"values\":[{\"value\":\"production\",\"context\":\"all\"}]}]' https://api.netlify.com/api/v1/accounts/6a03ba238a217290abf25b25/env?site_id=4404dd02-1aa8-453a-abfe-ea1c257ddd79)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)"
     ]
   }
 }

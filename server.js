@@ -10,7 +10,7 @@ import { fileURLToPath } from 'url';
 const { Pool } = pg;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
-const upload = multer({ dest: 'uploads/' });
+const upload = multer({ storage: multer.memoryStorage() });
 
 // Conexión PostgreSQL (Neon en producción, local en desarrollo)
 const pool = new Pool({
@@ -22,7 +22,7 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(__dirname));
 
-if (!fs.existsSync('uploads')) fs.mkdirSync('uploads');
+if (!process.env.NETLIFY && !fs.existsSync('uploads')) fs.mkdirSync('uploads');
 
 // ========== CREAR TABLAS ==========
 async function initDB() {
@@ -238,7 +238,7 @@ app.post('/api/cheques/:facturaId', async (req, res) => {
 // UPLOAD EXCEL
 app.post('/api/upload/excel', upload.single('file'), async (req, res) => {
     try {
-        const workbook = XLSX.readFile(req.file.path);
+        const workbook = XLSX.read(req.file.buffer || fs.readFileSync(req.file.path), { type: 'buffer' });
         const worksheet = workbook.Sheets[workbook.SheetNames[0]];
         const data = XLSX.utils.sheet_to_json(worksheet);
 
@@ -267,7 +267,7 @@ app.post('/api/upload/excel', upload.single('file'), async (req, res) => {
             insertadas++;
         }
 
-        fs.unlinkSync(req.file.path);
+        if (req.file.path) fs.unlinkSync(req.file.path);
         res.json({
             success: true,
             insertadas,
@@ -284,9 +284,9 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// INICIAR SERVIDOR
+// INICIAR SERVIDOR (solo en local, no en Netlify)
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
+if (!process.env.NETLIFY) app.listen(PORT, () => {
     console.log(`
 ╔════════════════════════════════════════╗
 ║   ✅ Facturas Cloud — PostgreSQL      ║
