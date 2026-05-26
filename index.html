@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Facturas Cloud v4.5+</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root { --primary: #2563eb; --primary-dark: #1e40af; --success: #10b981; --light: #f9fafb; --gray: #6b7280; --border: #e5e7eb; }
+        html, body { width: 100%; height: 100%; overflow: hidden; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--light); display: flex; }
+        .auth-overlay { display: flex; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%); justify-content: center; align-items: center; z-index: 9999; }
+        .auth-overlay.hidden { display: none; }
+        .auth-card { background: white; padding: 2.5rem; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); width: 100%; max-width: 400px; }
+        .auth-card h1 { text-align: center; margin-bottom: 0.5rem; color: var(--primary); font-size: 2rem; }
+        .form-group { margin-bottom: 1rem; }
+        .form-group label { display: block; margin-bottom: 0.4rem; font-weight: 600; }
+        .form-group input { width: 100%; padding: 0.8rem; border: 1px solid var(--border); border-radius: 6px; }
+        .btn { padding: 0.8rem; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; width: 100%; transition: all 0.3s; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover { background: var(--primary-dark); }
+        .sidebar { width: 280px; background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%); color: white; display: flex; flex-direction: column; }
+        .sidebar-header { padding: 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.2); text-align: center; }
+        .sidebar-nav { flex: 1; padding: 1rem 0; overflow-y: auto; }
+        .nav-item { padding: 0.8rem 1.5rem; cursor: pointer; border-left: 3px solid transparent; transition: all 0.3s; }
+        .nav-item:hover { background: rgba(255,255,255,0.1); }
+        .nav-item.active { background: rgba(255,255,255,0.15); border-left-color: white; font-weight: 600; }
+        .sidebar-footer { padding: 1rem; border-top: 1px solid rgba(255,255,255,0.2); }
+        .main-container { flex: 1; display: flex; flex-direction: column; }
+        .top-bar { background: white; padding: 1rem 2rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+        .content { flex: 1; overflow-y: auto; padding: 2rem; }
+        .section { display: none; }
+        .section.active { display: block; }
+        h2 { font-size: 1.5rem; margin-bottom: 1.5rem; }
+        .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+        .kpi-card { background: white; padding: 1.5rem; border-radius: 8px; border-left: 4px solid var(--primary); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .kpi-label { font-size: 0.8rem; color: var(--gray); text-transform: uppercase; font-weight: 600; }
+        .kpi-value { font-size: 1.8rem; font-weight: 700; margin-top: 0.5rem; color: var(--primary); }
+        .white-card { background: white; padding: 1.5rem; border-radius: 8px; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .table thead { background: #f3f4f6; }
+        .table th { padding: 0.8rem; text-align: left; font-weight: 600; font-size: 0.85rem; }
+        .table td { padding: 0.8rem; border-bottom: 1px solid var(--border); }
+        .state-badge { padding: 0.3rem 0.8rem; border-radius: 20px; font-size: 0.75rem; font-weight: 600; }
+        .state-badge.pendiente { background: #fef3c7; color: #92400e; }
+        .state-badge.pagada { background: #d1fae5; color: #065f46; }
+        .upload-area { border: 2px dashed var(--border); border-radius: 8px; padding: 2rem; text-align: center; cursor: pointer; transition: all 0.3s; }
+        .upload-area:hover { border-color: var(--primary); background: rgba(37,99,235,0.05); }
+        .file-input { display: none; }
+        .msg { padding: 1rem; border-radius: 6px; margin-top: 1rem; }
+        .msg.success { background: #d1fae5; color: #065f46; border-left: 4px solid var(--success); }
+        .msg.error { background: #fee2e2; color: #991b1b; border-left: 4px solid #ef4444; }
+        .spinner { display: inline-block; width: 20px; height: 20px; border: 3px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin-right: 0.5rem; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+        select { width: 100%; padding: 0.8rem; border: 1px solid var(--border); border-radius: 6px; }
+        .product-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1rem; }
+        .product-card { background: white; padding: 1rem; border-radius: 8px; border-top: 3px solid var(--primary); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .state-badge.transferencia { background: #dbeafe; color: #1e40af; }
+        .state-badge.cheque { background: #fce7f3; color: #9d174d; }
+        .grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 1rem; align-items: end; }
+        .cheque-row { display: grid; grid-template-columns: 1.5fr 1.5fr 2fr auto; gap: 0.5rem; margin-bottom: 0.5rem; align-items: end; }
+        .cheque-row label { font-size: 0.78rem; color: var(--gray); display: block; margin-bottom: 0.3rem; font-weight: 600; }
+        .cheque-row input { width: 100%; padding: 0.6rem; border: 1px solid var(--border); border-radius: 6px; font-size: 0.9rem; }
+        .btn-danger { background: #fee2e2; color: #991b1b; border: none; padding: 0.6rem 0.8rem; border-radius: 6px; cursor: pointer; font-size: 0.9rem; }
+        .btn-success { background: var(--success); color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 600; }
+        .pago-fields { border-top: 1px solid var(--border); margin-top: 1rem; padding-top: 1rem; }
+        .cheque-section { background: #f9fafb; border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-top: 0.5rem; }
+        input[type="date"], input[type="text"], input[type="number"] { width: 100%; padding: 0.8rem; border: 1px solid var(--border); border-radius: 6px; font-size: 0.95rem; }
+        .filtros-grid { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 1rem; align-items: end; }
+        @media (max-width: 900px) { .filtros-grid { grid-template-columns: 1fr 1fr; } .cheque-row { grid-template-columns: 1fr 1fr; } }
+    </style>
+</head>
+<body>
+    <div class="auth-overlay" id="authOverlay">
+        <div class="auth-card">
+            <h1>📊 Facturas Cloud</h1>
+            <p style="text-align: center; color: var(--gray); margin-bottom: 1.5rem;">v4.5+ | Express + SQLite</p>
+            <form onsubmit="login(event)">
+                <div class="form-group">
+                    <label>Email:</label>
+                    <input type="email" id="email" placeholder="usuario1@empresa.com" required>
+                </div>
+                <div class="form-group">
+                    <label>Contraseña:</label>
+                    <input type="password" id="password" placeholder="admin123" required>
+                </div>
+                <button type="submit" class="btn btn-primary">🔓 Ingresar</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="appContainer" style="display: none; width: 100%; display: flex;">
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <div style="font-size: 2.5rem;">📊</div>
+                <div style="font-weight: 700;">Facturas Cloud</div>
+                <div style="font-size: 0.7rem; opacity: 0.9;">v4.5+ Express</div>
+            </div>
+            <div class="sidebar-nav">
+                <div class="nav-item active" onclick="cambiarSeccion('dashboard')">📈 Dashboard</div>
+                <div class="nav-item" onclick="cambiarSeccion('facturas')">📄 Facturas</div>
+                <div class="nav-item" onclick="cambiarSeccion('importar')">📥 Importar Excel</div>
+                <div class="nav-item" onclick="cambiarSeccion('inventario')">📦 Inventario</div>
+                <div class="nav-item" onclick="cambiarSeccion('pagos')">💳 Pagos</div>
+            </div>
+            <div class="sidebar-footer">
+                <button class="btn btn-primary" onclick="logout()">Logout</button>
+            </div>
+        </div>
+
+        <div class="main-container">
+            <div class="top-bar">
+                <div style="font-size: 1.5rem; font-weight: 700;">📊 Facturas Cloud v4.5+</div>
+                <div style="background: var(--success); color: white; padding: 0.5rem 1rem; border-radius: 20px; font-size: 0.85rem; font-weight: 600;">🟢 Online</div>
+            </div>
+
+            <div class="content">
+                <section id="dashboard" class="section active">
+                    <h2>📈 Dashboard</h2>
+                    <div class="kpi-grid">
+                        <div class="kpi-card"><div class="kpi-label">Total Facturas</div><div class="kpi-value" id="kpi-total">0</div></div>
+                        <div class="kpi-card"><div class="kpi-label">Monto Total</div><div class="kpi-value" id="kpi-monto">$0</div></div>
+                        <div class="kpi-card"><div class="kpi-label">Pendientes</div><div class="kpi-value" id="kpi-pendientes">0</div></div>
+                        <div class="kpi-card"><div class="kpi-label">Pagadas</div><div class="kpi-value" id="kpi-pagadas">0</div></div>
+                        <div class="kpi-card"><div class="kpi-label">Productos</div><div class="kpi-value" id="kpi-productos">0</div></div>
+                    </div>
+                    <h3 style="margin: 2rem 0 1rem;">Últimas Facturas</h3>
+                    <table class="table">
+                        <thead><tr><th>Folio</th><th>Proveedor</th><th>Fecha</th><th>Monto</th><th>Estado</th></tr></thead>
+                        <tbody id="dashboardTable"><tr><td colspan="5" style="text-align: center;">Sin facturas</td></tr></tbody>
+                    </table>
+                </section>
+
+                <section id="facturas" class="section">
+                    <h2>📄 Facturas</h2>
+                    <div class="white-card" style="padding: 1rem 1.5rem; margin-bottom: 1rem;">
+                        <div style="display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap;">
+                            <div style="flex: 1; min-width: 200px;">
+                                <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:0.3rem; color:var(--gray);">Filtrar por Proveedor:</label>
+                                <input type="text" id="filtroProveedor" placeholder="Buscar proveedor..." oninput="renderTablaFacturas()" style="width:100%; padding:0.7rem; border:1px solid var(--border); border-radius:6px; font-size:0.95rem;">
+                            </div>
+                            <button onclick="toggleSortFecha()" id="btnSortFecha" style="padding:0.7rem 1.2rem; border:1px solid var(--border); border-radius:6px; background:white; cursor:pointer; font-size:0.9rem; white-space:nowrap;">
+                                📅 Fecha ▼
+                            </button>
+                            <button onclick="limpiarFiltroFacturas()" style="padding:0.7rem 1rem; border:1px solid var(--border); border-radius:6px; background:#f3f4f6; color:var(--gray); cursor:pointer; font-size:0.9rem;">
+                                Limpiar
+                            </button>
+                        </div>
+                        <div id="facturasFiltroInfo" style="margin-top:0.5rem; font-size:0.82rem; color:var(--gray);"></div>
+                    </div>
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Folio</th>
+                                <th>Proveedor</th>
+                                <th style="cursor:pointer; user-select:none;" onclick="toggleSortFecha()">Fecha <span id="sortIcon">▼</span></th>
+                                <th>Monto</th>
+                                <th>Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody id="facturasTable"><tr><td colspan="5" style="text-align: center;">Cargando...</td></tr></tbody>
+                    </table>
+                </section>
+
+                <section id="importar" class="section">
+                    <h2>📥 Importar Excel</h2>
+                    <div class="white-card">
+                        <p style="margin-bottom: 1rem; color: var(--gray);"><strong>Archivo:</strong> Fact_Compras_Abril_26.xlsx</p>
+                        <p style="margin-bottom: 1rem; color: var(--gray);"><strong>Columnas:</strong> Folio | F. Emision | Nombre | Total</p>
+                        <label class="upload-area" ondrop="handleDropExcel(event)" ondragover="event.preventDefault()">
+                            📁 Arrastra Excel aquí o haz click
+                            <input type="file" class="file-input" accept=".xlsx,.xls,.csv" id="excelFile" onchange="importarExcel(event)">
+                        </label>
+                        <div id="excelMsg"></div>
+                    </div>
+                </section>
+
+                <section id="inventario" class="section">
+                    <h2>📦 Inventario</h2>
+                    <div class="white-card">
+                        <p style="color: var(--gray);" id="inventarioCount">Total: 0 productos</p>
+                    </div>
+                    <div class="product-grid" id="inventarioGrid">
+                        <div style="text-align: center; padding: 3rem; color: var(--gray); grid-column: 1/-1;">📦 Sin productos</div>
+                    </div>
+                </section>
+
+                <section id="pagos" class="section">
+                    <h2>💳 Pagos</h2>
+
+                    <!-- Formulario de registro -->
+                    <div class="white-card">
+                        <h3 style="margin-bottom: 1rem; font-size: 1rem; color: var(--gray);">Registrar / Actualizar Pago</h3>
+                        <div class="grid-2">
+                            <div class="form-group">
+                                <label>Factura:</label>
+                                <select id="selectFactura">
+                                    <option value="">-- Selecciona --</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Estado:</label>
+                                <select id="pagoEstado" onchange="togglePagoFields()">
+                                    <option value="pagada">✅ Pagada</option>
+                                    <option value="pendiente">⏳ Pendiente</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Campos condicionales: solo cuando estado = pagada -->
+                        <div id="pagoFields" class="pago-fields">
+                            <div class="grid-2">
+                                <div class="form-group">
+                                    <label>Medio de Pago:</label>
+                                    <select id="medioPago" onchange="toggleChequeFields()">
+                                        <option value="transferencia">🏦 Transferencia</option>
+                                        <option value="cheque">📄 Cheque</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Fecha de Pago:</label>
+                                    <input type="date" id="fechaPago">
+                                </div>
+                            </div>
+
+                            <!-- Sección de cheques (solo si medio = cheque) -->
+                            <div id="chequeSection" style="display:none;">
+                                <div class="cheque-section">
+                                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.8rem;">
+                                        <strong style="font-size:0.9rem;">Detalle de Cheques</strong>
+                                        <button type="button" class="btn-success" onclick="agregarCheque()">+ Agregar Cheque</button>
+                                    </div>
+                                    <div id="chequesList"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="display:flex; gap:0.5rem; margin-top:1rem;">
+                            <button class="btn btn-primary" onclick="guardarPago()" style="width:auto; padding: 0.8rem 2rem;">Guardar Pago</button>
+                            <button class="btn" onclick="limpiarFormPago()" style="width:auto; padding: 0.8rem 1.5rem; background:#f3f4f6; color:var(--gray);">Limpiar</button>
+                        </div>
+                        <div id="pagoMsg"></div>
+                    </div>
+
+                    <!-- Filtros -->
+                    <div class="white-card">
+                        <h3 style="margin-bottom: 1rem; font-size: 1rem; color: var(--gray);">🔍 Filtrar Pagos Registrados</h3>
+                        <div class="filtros-grid">
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label>Medio de Pago:</label>
+                                <select id="filtroMedio" onchange="cargarPagos()">
+                                    <option value="">— Todos —</option>
+                                    <option value="transferencia">🏦 Transferencia</option>
+                                    <option value="cheque">📄 Cheque</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label>Fecha Pago Desde:</label>
+                                <input type="date" id="filtroDesde" onchange="cargarPagos()">
+                            </div>
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label>Fecha Pago Hasta:</label>
+                                <input type="date" id="filtroHasta" onchange="cargarPagos()">
+                            </div>
+                            <button class="btn" onclick="limpiarFiltros()" style="background:#f3f4f6; color:var(--gray);">Limpiar</button>
+                        </div>
+                    </div>
+
+                    <!-- Tabla de pagos -->
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Folio</th>
+                                <th>Proveedor</th>
+                                <th>Monto Factura</th>
+                                <th>Medio de Pago</th>
+                                <th>Fecha de Pago</th>
+                                <th>Cheques</th>
+                            </tr>
+                        </thead>
+                        <tbody id="pagosTable">
+                            <tr><td colspan="6" style="text-align:center; color:var(--gray); padding:2rem;">Sin pagos registrados</td></tr>
+                        </tbody>
+                    </table>
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API = '/api';
+        let token = null;
+        let facturas = [];
+        let productos = [];
+
+        async function login(e) {
+            e.preventDefault();
+            try {
+                const res = await fetch(`${API}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: document.getElementById('email').value,
+                        password: document.getElementById('password').value
+                    })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    token = data.token;
+                    localStorage.setItem('token', token);
+                    document.getElementById('authOverlay').classList.add('hidden');
+                    document.getElementById('appContainer').style.display = 'flex';
+                    cargarDatos();
+                } else {
+                    alert('Email o contraseña incorrectos');
+                }
+            } catch (error) {
+                alert('Error de conexión al servidor');
+            }
+        }
+
+        function logout() {
+            if (confirm('¿Cerrar sesión?')) {
+                localStorage.removeItem('token');
+                location.reload();
+            }
+        }
+
+        function cambiarSeccion(id) {
+            document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+            event.target.classList.add('active');
+            if (id === 'pagos') cargarPagos();
+        }
+
+        async function cargarDatos() {
+            await cargarFacturas();
+            await cargarProductos();
+        }
+
+        async function cargarFacturas() {
+            try {
+                const res = await fetch(`${API}/facturas`);
+                const data = await res.json();
+                facturas = data.facturas || [];
+                mostrarFacturas();
+            } catch (error) { console.error(error); }
+        }
+
+        async function cargarProductos() {
+            try {
+                const res = await fetch(`${API}/productos`);
+                const data = await res.json();
+                productos = data.productos || [];
+                actualizarInventario();
+            } catch (error) { console.error(error); }
+        }
+
+        let facturasSortDir = 'desc'; // desc = más reciente primero
+
+        function mostrarFacturas() {
+            const pendientes = facturas.filter(f => f.estado === 'pendiente').length;
+            const pagadas = facturas.filter(f => f.estado === 'pagada').length;
+            const total = facturas.reduce((sum, f) => sum + (f.monto || 0), 0);
+
+            document.getElementById('kpi-total').textContent = facturas.length;
+            document.getElementById('kpi-monto').textContent = '$' + total.toLocaleString('es-CL');
+            document.getElementById('kpi-pendientes').textContent = pendientes;
+            document.getElementById('kpi-pagadas').textContent = pagadas;
+            document.getElementById('kpi-productos').textContent = productos.length;
+
+            // Dashboard: últimas 10 ordenadas por fecha desc
+            const dashHtml = [...facturas]
+                .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''))
+                .slice(0, 10)
+                .map(f => `
+                    <tr>
+                        <td>${f.folio}</td>
+                        <td>${f.proveedor}</td>
+                        <td>${f.fecha}</td>
+                        <td>$${(f.monto || 0).toLocaleString('es-CL')}</td>
+                        <td><span class="state-badge ${f.estado}">${f.estado}</span></td>
+                    </tr>
+                `).join('');
+            document.getElementById('dashboardTable').innerHTML = dashHtml || '<tr><td colspan="5" style="text-align: center;">Sin facturas</td></tr>';
+
+            // Tabla facturas: con filtro y ordenamiento
+            renderTablaFacturas();
+
+            // Select de pagos
+            const select = document.getElementById('selectFactura');
+            select.innerHTML = '<option value="">-- Selecciona --</option>' +
+                facturas.map(f => `<option value="${f.id}">${f.folio} - ${f.proveedor}</option>`).join('');
+        }
+
+        function renderTablaFacturas() {
+            const texto = (document.getElementById('filtroProveedor')?.value || '').toLowerCase().trim();
+
+            let lista = [...facturas];
+
+            // Filtro por proveedor
+            if (texto) {
+                lista = lista.filter(f => (f.proveedor || '').toLowerCase().includes(texto));
+            }
+
+            // Ordenar por fecha
+            lista.sort((a, b) => {
+                const cmp = (a.fecha || '').localeCompare(b.fecha || '');
+                return facturasSortDir === 'asc' ? cmp : -cmp;
+            });
+
+            const html = lista.map(f => `
+                <tr>
+                    <td>${f.folio}</td>
+                    <td>${f.proveedor}</td>
+                    <td>${f.fecha}</td>
+                    <td>$${(f.monto || 0).toLocaleString('es-CL')}</td>
+                    <td><span class="state-badge ${f.estado}">${f.estado}</span></td>
+                </tr>
+            `).join('');
+
+            document.getElementById('facturasTable').innerHTML = html || '<tr><td colspan="5" style="text-align: center; color:var(--gray);">Sin resultados</td></tr>';
+
+            // Info de filtro
+            const info = document.getElementById('facturasFiltroInfo');
+            if (info) {
+                info.textContent = texto
+                    ? `Mostrando ${lista.length} de ${facturas.length} facturas — proveedor: "${texto}"`
+                    : `Total: ${lista.length} facturas`;
+            }
+        }
+
+        function toggleSortFecha() {
+            facturasSortDir = facturasSortDir === 'desc' ? 'asc' : 'desc';
+            const icon = document.getElementById('sortIcon');
+            const btn = document.getElementById('btnSortFecha');
+            const label = facturasSortDir === 'asc' ? '▲' : '▼';
+            if (icon) icon.textContent = label;
+            if (btn) btn.textContent = `📅 Fecha ${label}`;
+            renderTablaFacturas();
+        }
+
+        function limpiarFiltroFacturas() {
+            const inp = document.getElementById('filtroProveedor');
+            if (inp) inp.value = '';
+            facturasSortDir = 'desc';
+            const icon = document.getElementById('sortIcon');
+            const btn = document.getElementById('btnSortFecha');
+            if (icon) icon.textContent = '▼';
+            if (btn) btn.textContent = '📅 Fecha ▼';
+            renderTablaFacturas();
+        }
+
+        function handleDropExcel(e) {
+            e.preventDefault();
+            document.getElementById('excelFile').files = e.dataTransfer.files;
+            importarExcel({ target: { files: e.dataTransfer.files } });
+        }
+
+        async function importarExcel(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            document.getElementById('excelMsg').innerHTML = '<div style="padding: 1rem; text-align: center;"><span class="spinner"></span>Procesando Excel...</div>';
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const res = await fetch(`${API}/upload/excel`, {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+                if (data.success) {
+                    document.getElementById('excelMsg').innerHTML = `<div class="msg success">✅ ${data.insertadas}/${data.total} facturas importadas correctamente</div>`;
+                    await cargarFacturas();
+                } else {
+                    document.getElementById('excelMsg').innerHTML = `<div class="msg error">❌ Error: ${data.error}</div>`;
+                }
+            } catch (error) {
+                document.getElementById('excelMsg').innerHTML = '<div class="msg error">❌ Error al procesar</div>';
+            }
+        }
+
+        function actualizarInventario() {
+            document.getElementById('inventarioCount').textContent = `Total: ${productos.length} productos`;
+            if (!productos.length) {
+                document.getElementById('inventarioGrid').innerHTML = '<div style="text-align: center; padding: 3rem; color: var(--gray); grid-column: 1/-1;">📦 Sin productos</div>';
+                return;
+            }
+
+            const html = productos.map(p => `
+                <div class="product-card">
+                    <strong>${p.nombre}</strong>
+                    <p style="font-size: 0.85rem; color: var(--gray); margin: 0.5rem 0;">📦 ${p.cantidad} uds | $${p.valor.toLocaleString('es-CL')}</p>
+                    <p style="font-size: 0.8rem; color: var(--gray);">Folio: ${p.folio}</p>
+                </div>
+            `).join('');
+
+            document.getElementById('inventarioGrid').innerHTML = html;
+        }
+
+        // ===== PAGOS: campos condicionales =====
+        function togglePagoFields() {
+            const estado = document.getElementById('pagoEstado').value;
+            document.getElementById('pagoFields').style.display = estado === 'pagada' ? 'block' : 'none';
+            if (estado === 'pagada') toggleChequeFields();
+        }
+
+        function toggleChequeFields() {
+            const medio = document.getElementById('medioPago').value;
+            const sec = document.getElementById('chequeSection');
+            sec.style.display = medio === 'cheque' ? 'block' : 'none';
+            if (medio === 'cheque' && document.getElementById('chequesList').children.length === 0) {
+                agregarCheque();
+            }
+        }
+
+        let chequeIdx = 0;
+        function agregarCheque() {
+            chequeIdx++;
+            const i = chequeIdx;
+            const row = document.createElement('div');
+            row.className = 'cheque-row';
+            row.id = `chequeRow_${i}`;
+            row.innerHTML = `
+                <div><label>N° Cheque</label><input type="text" id="cn_${i}" placeholder="Ej: 00123456"></div>
+                <div><label>Fecha Cheque</label><input type="date" id="cf_${i}"></div>
+                <div><label>Monto Cheque ($)</label><input type="number" id="cm_${i}" placeholder="0" min="0"></div>
+                <div style="display:flex;align-items:flex-end;"><button type="button" class="btn-danger" onclick="eliminarCheque(${i})">✕</button></div>
+            `;
+            document.getElementById('chequesList').appendChild(row);
+        }
+
+        function eliminarCheque(i) {
+            const el = document.getElementById(`chequeRow_${i}`);
+            if (el) el.remove();
+        }
+
+        function obtenerCheques() {
+            const cheques = [];
+            document.querySelectorAll('#chequesList .cheque-row').forEach(row => {
+                const i = row.id.replace('chequeRow_', '');
+                const fecha = document.getElementById(`cf_${i}`)?.value || '';
+                const monto = parseInt(document.getElementById(`cm_${i}`)?.value || '0');
+                if (fecha || monto > 0) {
+                    cheques.push({
+                        numero_cheque: document.getElementById(`cn_${i}`)?.value || '',
+                        fecha_cheque: fecha,
+                        monto_cheque: monto
+                    });
+                }
+            });
+            return cheques;
+        }
+
+        function limpiarFormPago() {
+            document.getElementById('selectFactura').value = '';
+            document.getElementById('pagoEstado').value = 'pagada';
+            document.getElementById('medioPago').value = 'transferencia';
+            document.getElementById('fechaPago').value = '';
+            document.getElementById('chequesList').innerHTML = '';
+            document.getElementById('chequeSection').style.display = 'none';
+            document.getElementById('pagoFields').style.display = 'block';
+            document.getElementById('pagoMsg').innerHTML = '';
+        }
+
+        async function guardarPago() {
+            const id = document.getElementById('selectFactura').value;
+            const estado = document.getElementById('pagoEstado').value;
+
+            if (!id) { alert('Selecciona una factura'); return; }
+
+            const body = { estado };
+
+            if (estado === 'pagada') {
+                body.medio_pago = document.getElementById('medioPago').value;
+                body.fecha_pago = document.getElementById('fechaPago').value;
+                if (!body.fecha_pago) { alert('Ingresa la fecha de pago'); return; }
+            }
+
+            try {
+                const res = await fetch(`${API}/facturas/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await res.json();
+                if (!data.success) { alert('Error: ' + data.error); return; }
+
+                if (estado === 'pagada' && body.medio_pago === 'cheque') {
+                    const cheques = obtenerCheques();
+                    await fetch(`${API}/cheques/${id}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ cheques })
+                    });
+                }
+
+                document.getElementById('pagoMsg').innerHTML = '<div class="msg success">✅ Pago registrado correctamente</div>';
+                setTimeout(() => {
+                    cargarFacturas();
+                    cargarPagos();
+                    limpiarFormPago();
+                }, 1500);
+            } catch (error) {
+                alert('Error guardando pago');
+            }
+        }
+
+        // ===== PAGOS: tabla con filtros =====
+        async function cargarPagos() {
+            const medio = document.getElementById('filtroMedio')?.value || '';
+            const desde = document.getElementById('filtroDesde')?.value || '';
+            const hasta = document.getElementById('filtroHasta')?.value || '';
+
+            const params = new URLSearchParams();
+            if (medio) params.append('medio_pago', medio);
+            if (desde) params.append('fecha_desde', desde);
+            if (hasta) params.append('fecha_hasta', hasta);
+
+            try {
+                const res = await fetch(`${API}/pagos?${params}`);
+                const data = await res.json();
+                mostrarPagos(data.pagos || []);
+            } catch (e) { console.error(e); }
+        }
+
+        function mostrarPagos(pagos) {
+            const tbody = document.getElementById('pagosTable');
+            if (!pagos.length) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--gray); padding:2rem;">Sin pagos registrados con los filtros aplicados</td></tr>';
+                return;
+            }
+            tbody.innerHTML = pagos.map(p => {
+                const medioLabel = p.medio_pago === 'cheque' ? '📄 Cheque' : p.medio_pago === 'transferencia' ? '🏦 Transferencia' : '-';
+                let chequesHtml = '-';
+                if (p.medio_pago === 'cheque' && p.cheques && p.cheques.length) {
+                    chequesHtml = p.cheques.map(c =>
+                        `<div style="font-size:0.8rem; padding:0.15rem 0; border-bottom:1px solid #f0f0f0;">` +
+                        `${c.numero_cheque ? '<b>N°' + c.numero_cheque + '</b> · ' : ''}` +
+                        `${c.fecha_cheque || ''} · ` +
+                        `<b>$${(c.monto_cheque || 0).toLocaleString('es-CL')}</b></div>`
+                    ).join('');
+                }
+                return `<tr>
+                    <td><strong>${p.folio}</strong></td>
+                    <td>${p.proveedor || '-'}</td>
+                    <td>$${(p.monto || 0).toLocaleString('es-CL')}</td>
+                    <td><span class="state-badge ${p.medio_pago || ''}">${medioLabel}</span></td>
+                    <td>${p.fecha_pago || '-'}</td>
+                    <td>${chequesHtml}</td>
+                </tr>`;
+            }).join('');
+        }
+
+        function limpiarFiltros() {
+            document.getElementById('filtroMedio').value = '';
+            document.getElementById('filtroDesde').value = '';
+            document.getElementById('filtroHasta').value = '';
+            cargarPagos();
+        }
+
+        window.addEventListener('load', () => {
+            const t = localStorage.getItem('token');
+            if (t) {
+                token = t;
+                document.getElementById('authOverlay').classList.add('hidden');
+                document.getElementById('appContainer').style.display = 'flex';
+                cargarDatos();
+            }
+        });
+    </script>
+</body>
+</html>

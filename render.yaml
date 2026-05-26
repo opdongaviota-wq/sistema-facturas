@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: facturas-cloud
+    runtime: node
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: DATABASE_URL
+        sync: false          # Lo pegas tú desde Neon
+      - key: NODE_ENV
+        value: production
