@@ -74,6 +74,13 @@
         .state-badge.vencida    { background: #fee2e2; color: #b91c1c; }
         .reporte-bar { height: 10px; border-radius: 5px; background: #e5e7eb; overflow: hidden; margin-top: 0.4rem; }
         .reporte-bar-fill { height: 100%; border-radius: 5px; transition: width 0.6s ease; }
+        .btn-export { background: #10b981; color: white; border: none; padding: 0.5rem 1.2rem; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 600; transition: background 0.2s; white-space:nowrap; }
+        .btn-export:hover { background: #059669; }
+        .btn-limpiar-bd { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; padding: 0.7rem 1rem; border-radius: 6px; cursor: pointer; font-size: 0.9rem; font-weight: 600; transition: background 0.2s; }
+        .btn-limpiar-bd:hover { background: #fecaca; }
+        .filtros-reporte { display: grid; grid-template-columns: 2fr 1.5fr 1fr 1fr auto; gap: 0.8rem; align-items: end; margin-bottom: 0.8rem; }
+        @media (max-width: 1100px) { .filtros-reporte { grid-template-columns: 1fr 1fr; } }
+        .card-header-actions { display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; flex-wrap:wrap; gap:0.5rem; }
     </style>
 </head>
 <body>
@@ -153,6 +160,9 @@
                             </button>
                             <button onclick="limpiarFiltroFacturas()" style="padding:0.7rem 1rem; border:1px solid var(--border); border-radius:6px; background:#f3f4f6; color:var(--gray); cursor:pointer; font-size:0.9rem;">
                                 Limpiar
+                            </button>
+                            <button onclick="limpiarBaseFacturas()" class="btn-limpiar-bd">
+                                🗑️ Limpiar BD
                             </button>
                         </div>
                         <div id="facturasFiltroInfo" style="margin-top:0.5rem; font-size:0.82rem; color:var(--gray);"></div>
@@ -399,9 +409,67 @@
                         </div>
                     </div>
 
+                    <!-- Filtro y Detalle de Facturas -->
                     <div class="white-card">
-                        <h3 style="font-size:1rem; margin-bottom:1rem;">🏢 Resumen por Proveedor</h3>
-                        <table class="table">
+                        <div class="card-header-actions">
+                            <h3 style="font-size:1rem;">🔍 Detalle de Facturas</h3>
+                            <button class="btn-export" onclick="exportarDetalleExcel()">📥 Exportar Excel</button>
+                        </div>
+                        <div class="filtros-reporte">
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label style="font-size:0.82rem; font-weight:600; color:var(--gray); display:block; margin-bottom:0.3rem;">Proveedor:</label>
+                                <input type="text" id="rep-f-proveedor" placeholder="Nombre proveedor..." style="padding:0.7rem;">
+                            </div>
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label style="font-size:0.82rem; font-weight:600; color:var(--gray); display:block; margin-bottom:0.3rem;">Estado:</label>
+                                <select id="rep-f-estado" style="padding:0.7rem;">
+                                    <option value="">— Todos —</option>
+                                    <option value="pendiente">⏳ Pendiente</option>
+                                    <option value="por_vencer">🟠 Por Vencer</option>
+                                    <option value="vencida">🔴 Vencida</option>
+                                    <option value="pagada">✅ Pagada</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label style="font-size:0.82rem; font-weight:600; color:var(--gray); display:block; margin-bottom:0.3rem;">Fecha Desde:</label>
+                                <input type="date" id="rep-f-desde" style="padding:0.7rem;">
+                            </div>
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label style="font-size:0.82rem; font-weight:600; color:var(--gray); display:block; margin-bottom:0.3rem;">Fecha Hasta:</label>
+                                <input type="date" id="rep-f-hasta" style="padding:0.7rem;">
+                            </div>
+                            <div style="display:flex; gap:0.5rem; align-items:flex-end;">
+                                <button class="btn btn-primary" onclick="aplicarFiltrosReporte()" style="width:auto; padding:0.7rem 1.2rem;">Buscar</button>
+                                <button class="btn" onclick="limpiarFiltrosReporte()" style="width:auto; padding:0.7rem 0.9rem; background:#f3f4f6; color:var(--gray);">✕</button>
+                            </div>
+                        </div>
+                        <div id="rep-filtro-info" style="font-size:0.82rem; color:var(--gray); margin-bottom:0.5rem;"></div>
+                        <table class="table" style="margin-bottom:0;">
+                            <thead>
+                                <tr>
+                                    <th>Folio</th>
+                                    <th>Proveedor</th>
+                                    <th>RUT</th>
+                                    <th>Fecha</th>
+                                    <th>Monto</th>
+                                    <th>Estado</th>
+                                    <th>Medio Pago</th>
+                                    <th>Fecha Pago</th>
+                                </tr>
+                            </thead>
+                            <tbody id="rep-detalle-table">
+                                <tr><td colspan="8" style="text-align:center; color:var(--gray); padding:2rem;">Aplica filtros para ver el detalle</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Resumen por Proveedor -->
+                    <div class="white-card">
+                        <div class="card-header-actions">
+                            <h3 style="font-size:1rem;">🏢 Resumen por Proveedor</h3>
+                            <button class="btn-export" onclick="exportarProveedoresExcel()">📥 Exportar Excel</button>
+                        </div>
+                        <table class="table" style="margin-bottom:0;">
                             <thead>
                                 <tr>
                                     <th>Proveedor</th>
@@ -428,6 +496,8 @@
         let currentUser = null;
         let facturas = [];
         let productos = [];
+        let repDetalleData  = [];   // facturas filtradas para exportar
+        let proveedoresData = [];   // resumen proveedores para exportar
 
         // ===== ESTADO CALCULADO (lógica de vencimiento) =====
         function calcularEstado(f) {
@@ -956,9 +1026,9 @@
                     else                           prov[k].pag  += (f.monto || 0);
                     if (f.rut && f.rut !== '-') prov[k].rut = f.rut;
                 });
-                const lista = Object.values(prov).sort((a, b) => b.total - a.total);
-                provEl.innerHTML = lista.length
-                    ? lista.map(p => `<tr>
+                proveedoresData = Object.values(prov).sort((a, b) => b.total - a.total);
+                provEl.innerHTML = proveedoresData.length
+                    ? proveedoresData.map(p => `<tr>
                         <td><strong>${p.nombre}</strong></td>
                         <td style="font-size:0.82rem; color:var(--gray);">${p.rut}</td>
                         <td style="text-align:center;">${p.n}</td>
@@ -967,6 +1037,125 @@
                         <td style="color:#10b981;">$${p.pag.toLocaleString('es-CL')}</td>
                     </tr>`).join('')
                     : '<tr><td colspan="6" style="text-align:center; color:var(--gray);">Sin datos</td></tr>';
+            }
+        }
+
+        // ===== REPORTES: filtro, exportar y limpiar BD =====
+
+        function aplicarFiltrosReporte() {
+            const proveedor = (document.getElementById('rep-f-proveedor')?.value || '').toLowerCase().trim();
+            const estado    = document.getElementById('rep-f-estado')?.value  || '';
+            const desde     = document.getElementById('rep-f-desde')?.value   || '';
+            const hasta     = document.getElementById('rep-f-hasta')?.value   || '';
+
+            let lista = facturas.map(f => ({ ...f, estadoCalc: calcularEstado(f) }));
+
+            if (proveedor) lista = lista.filter(f => (f.proveedor || '').toLowerCase().includes(proveedor));
+            if (estado)    lista = lista.filter(f => f.estadoCalc === estado);
+            if (desde)     lista = lista.filter(f => (f.fecha || '') >= desde);
+            if (hasta)     lista = lista.filter(f => (f.fecha || '') <= hasta);
+
+            repDetalleData = lista;
+
+            // Información de resultados
+            const infoEl = document.getElementById('rep-filtro-info');
+            if (infoEl) {
+                const total = lista.reduce((s, f) => s + (f.monto || 0), 0);
+                infoEl.innerHTML = lista.length
+                    ? `<strong>${lista.length}</strong> factura${lista.length !== 1 ? 's' : ''} · Monto total: <strong>$${total.toLocaleString('es-CL')}</strong>`
+                    : '<span style="color:#b91c1c;">Sin resultados con los filtros aplicados</span>';
+            }
+
+            // Tabla detalle
+            const tbody = document.getElementById('rep-detalle-table');
+            if (!tbody) return;
+            tbody.innerHTML = !lista.length
+                ? '<tr><td colspan="8" style="text-align:center; color:var(--gray); padding:2rem;">Sin resultados</td></tr>'
+                : lista.map(f => {
+                    const est = f.estadoCalc;
+                    const medioLabel = f.medio_pago === 'transferencia' ? '🏦 Transf.' : f.medio_pago === 'cheque' ? '📄 Cheque' : (f.medio_pago || '-');
+                    return `<tr>
+                        <td>${f.folio}</td>
+                        <td>${f.proveedor || '-'}</td>
+                        <td style="font-size:0.82rem; color:var(--gray);">${f.rut || '-'}</td>
+                        <td>${f.fecha || '-'}</td>
+                        <td>$${(f.monto || 0).toLocaleString('es-CL')}</td>
+                        <td><span class="state-badge ${est}">${labelEstado(est)}</span></td>
+                        <td style="font-size:0.85rem;">${medioLabel}</td>
+                        <td style="font-size:0.85rem;">${f.fecha_pago || '-'}</td>
+                    </tr>`;
+                }).join('');
+        }
+
+        function limpiarFiltrosReporte() {
+            ['rep-f-proveedor','rep-f-estado','rep-f-desde','rep-f-hasta'].forEach(id => {
+                const el = document.getElementById(id); if (el) el.value = '';
+            });
+            repDetalleData = [];
+            const infoEl = document.getElementById('rep-filtro-info');
+            if (infoEl) infoEl.textContent = '';
+            const tbody = document.getElementById('rep-detalle-table');
+            if (tbody) tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:var(--gray); padding:2rem;">Aplica filtros para ver el detalle</td></tr>';
+        }
+
+        function exportarDetalleExcel() {
+            if (!repDetalleData.length) {
+                alert('No hay datos filtrados para exportar.\nAplica un filtro y presiona Buscar primero.');
+                return;
+            }
+            const wsData = [
+                ['Folio','Proveedor','RUT','Fecha Emisión','Monto','Estado','Medio de Pago','Fecha de Pago']
+            ].concat(repDetalleData.map(f => [
+                f.folio,
+                f.proveedor || '',
+                f.rut        || '',
+                f.fecha      || '',
+                f.monto      || 0,
+                labelEstado(calcularEstado(f)),
+                f.medio_pago || '',
+                f.fecha_pago || ''
+            ]));
+            const ws = XLSX.utils.aoa_to_sheet(wsData);
+            ws['!cols'] = [{wch:12},{wch:32},{wch:14},{wch:14},{wch:14},{wch:12},{wch:16},{wch:14}];
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Facturas');
+            XLSX.writeFile(wb, `Reporte_Facturas_${new Date().toISOString().split('T')[0]}.xlsx`);
+        }
+
+        function exportarProveedoresExcel() {
+            if (!proveedoresData.length) {
+                alert('No hay datos de proveedores. Abre el módulo Reportes primero.');
+                return;
+            }
+            const wsData = [
+                ['Proveedor','RUT','N° Facturas','Monto Total','Pendiente / Vencido','Pagado']
+            ].concat(proveedoresData.map(p => [
+                p.nombre, p.rut, p.n, p.total, p.pend, p.pag
+            ]));
+            const ws = XLSX.utils.aoa_to_sheet(wsData);
+            ws['!cols'] = [{wch:32},{wch:14},{wch:12},{wch:16},{wch:20},{wch:16}];
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Proveedores');
+            XLSX.writeFile(wb, `Resumen_Proveedores_${new Date().toISOString().split('T')[0]}.xlsx`);
+        }
+
+        async function limpiarBaseFacturas() {
+            const n = facturas.length;
+            if (!n) { alert('No hay facturas en la base de datos.'); return; }
+            if (!confirm(`⚠️ ATENCIÓN\n\n¿Eliminar TODAS las ${n} facturas de la base de datos?\n\nEsta acción NO se puede deshacer.`)) return;
+            if (!confirm(`⚠️ Segunda confirmación requerida\n\n¿Confirmas la eliminación permanente de ${n} facturas?`)) return;
+            try {
+                const res  = await fetch(`${API}/facturas/all`, { method: 'DELETE' });
+                const data = await res.json();
+                if (data.success) {
+                    facturas = [];
+                    mostrarFacturas();
+                    alert(`✅ Se eliminaron ${data.eliminadas} facturas correctamente.`);
+                } else {
+                    alert('Error: ' + (data.message || data.error));
+                }
+            } catch (e) {
+                alert('Error de conexión al servidor');
             }
         }
 

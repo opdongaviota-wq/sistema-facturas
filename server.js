@@ -172,6 +172,16 @@ app.put('/api/facturas/:id', async (req, res) => {
     }
 });
 
+// DELETE ALL FACTURAS (limpiar base — debe estar ANTES de /:id)
+app.delete('/api/facturas/all', async (req, res) => {
+    try {
+        const result = await pool.query('DELETE FROM facturas');
+        res.json({ success: true, eliminadas: result.rowCount });
+    } catch (err) {
+        res.json({ success: false, error: err.message });
+    }
+});
+
 // DELETE FACTURA
 app.delete('/api/facturas/:id', async (req, res) => {
     try {
