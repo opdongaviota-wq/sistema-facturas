@@ -311,13 +311,21 @@ app.post('/api/upload/excel', upload.single('file'), async (req, res) => {
             };
         }).filter(f => f.folio && f.monto > 0);
 
-        // Obtener folios existentes para evitar duplicados (conserva versión anterior)
+        // Obtener folios existentes para evitar duplicados (conserva datos anteriores)
         const existingResult = await pool.query('SELECT folio FROM facturas');
         const existingFolios = new Set(existingResult.rows.map(r => r.folio));
 
-        let insertadas = 0, omitidas = 0;
+        let insertadas = 0, omitidas = 0, rutActualizadas = 0;
         for (const f of facturas) {
             if (existingFolios.has(f.folio)) {
+                // Folio ya existe: actualizar RUT si el registro no lo tenía
+                if (f.rut) {
+                    const upd = await pool.query(
+                        "UPDATE facturas SET rut=$1 WHERE folio=$2 AND (rut IS NULL OR rut='')",
+                        [f.rut, f.folio]
+                    ).catch(() => ({ rowCount: 0 }));
+                    if (upd.rowCount > 0) rutActualizadas++;
+                }
                 omitidas++;
                 continue;
             }
@@ -332,12 +340,18 @@ app.post('/api/upload/excel', upload.single('file'), async (req, res) => {
         }
 
         if (req.file.path) fs.unlinkSync(req.file.path);
+        const partes = [
+            insertadas > 0          ? `${insertadas} nuevas importadas`              : '',
+            rutActualizadas > 0     ? `${rutActualizadas} RUTs actualizados`         : '',
+            omitidas - rutActualizadas > 0 ? `${omitidas - rutActualizadas} sin cambios` : '',
+        ].filter(Boolean);
         res.json({
             success: true,
             insertadas,
             omitidas,
+            rutActualizadas,
             total: facturas.length,
-            message: `${insertadas}/${facturas.length} facturas importadas${omitidas > 0 ? ` · ${omitidas} duplicadas omitidas` : ''}`
+            message: partes.length ? partes.join(' · ') : 'Sin cambios'
         });
     } catch (error) {
         res.json({ success: false, error: error.message });

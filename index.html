@@ -718,7 +718,7 @@
                 });
                 const data = await res.json();
                 if (data.success) {
-                    document.getElementById('excelMsg').innerHTML = `<div class="msg success">✅ ${data.insertadas}/${data.total} facturas importadas correctamente</div>`;
+                    document.getElementById('excelMsg').innerHTML = `<div class="msg success">✅ ${data.message}</div>`;
                     await cargarFacturas();
                 } else {
                     document.getElementById('excelMsg').innerHTML = `<div class="msg error">❌ Error: ${data.error}</div>`;
