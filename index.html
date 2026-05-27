@@ -104,6 +104,7 @@
                 <div class="nav-item" onclick="cambiarSeccion('importar')">📥 Importar Excel</div>
                 <div class="nav-item" onclick="cambiarSeccion('inventario')">📦 Inventario</div>
                 <div class="nav-item" onclick="cambiarSeccion('pagos')">💳 Pagos</div>
+                <div class="nav-item" id="navConfiguracion" style="display:none;" onclick="cambiarSeccion('configuracion')">⚙️ Configuración</div>
             </div>
             <div class="sidebar-footer">
                 <button class="btn btn-primary" onclick="logout()">Logout</button>
@@ -285,6 +286,60 @@
                         </tbody>
                     </table>
                 </section>
+
+                <section id="configuracion" class="section">
+                    <h2>⚙️ Configuración</h2>
+
+                    <!-- Crear usuario -->
+                    <div class="white-card">
+                        <h3 style="margin-bottom: 1rem; font-size: 1rem; color: var(--gray);">➕ Agregar Nuevo Usuario</h3>
+                        <div class="grid-2">
+                            <div class="form-group">
+                                <label>Nombre:</label>
+                                <input type="text" id="nuevoNombre" placeholder="Nombre completo">
+                            </div>
+                            <div class="form-group">
+                                <label>Email:</label>
+                                <input type="email" id="nuevoEmail" placeholder="correo@empresa.com">
+                            </div>
+                        </div>
+                        <div class="grid-2">
+                            <div class="form-group">
+                                <label>Contraseña:</label>
+                                <input type="password" id="nuevoPassword" placeholder="Contraseña">
+                            </div>
+                            <div class="form-group">
+                                <label>Rol:</label>
+                                <select id="nuevoRol">
+                                    <option value="usuario">👤 Usuario</option>
+                                    <option value="admin">👑 Admin</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button class="btn btn-primary" onclick="crearUsuario()" style="width:auto; padding: 0.8rem 2rem;">Crear Usuario</button>
+                        <div id="usuarioMsg"></div>
+                    </div>
+
+                    <!-- Tabla de usuarios -->
+                    <div class="white-card">
+                        <h3 style="margin-bottom: 1rem; font-size: 1rem; color: var(--gray);">👥 Usuarios del Sistema</h3>
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Nombre</th>
+                                    <th>Email</th>
+                                    <th>Rol</th>
+                                    <th>Estado</th>
+                                    <th>Creado</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="usuariosTable">
+                                <tr><td colspan="6" style="text-align:center; color:var(--gray); padding:2rem;">Cargando usuarios...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
             </div>
         </div>
     </div>
@@ -292,6 +347,7 @@
     <script>
         const API = '/api';
         let token = null;
+        let currentUser = null;
         let facturas = [];
         let productos = [];
 
@@ -309,12 +365,17 @@
                 const data = await res.json();
                 if (data.success) {
                     token = data.token;
+                    currentUser = data.user;
                     localStorage.setItem('token', token);
+                    localStorage.setItem('currentUser', JSON.stringify(data.user));
                     document.getElementById('authOverlay').classList.add('hidden');
                     document.getElementById('appContainer').style.display = 'flex';
+                    if (currentUser && currentUser.rol === 'admin') {
+                        document.getElementById('navConfiguracion').style.display = 'block';
+                    }
                     cargarDatos();
                 } else {
-                    alert('Email o contraseña incorrectos');
+                    alert(data.message || 'Email o contraseña incorrectos');
                 }
             } catch (error) {
                 alert('Error de conexión al servidor');
@@ -324,6 +385,7 @@
         function logout() {
             if (confirm('¿Cerrar sesión?')) {
                 localStorage.removeItem('token');
+                localStorage.removeItem('currentUser');
                 location.reload();
             }
         }
@@ -334,6 +396,7 @@
             document.getElementById(id).classList.add('active');
             event.target.classList.add('active');
             if (id === 'pagos') cargarPagos();
+            if (id === 'configuracion') cargarUsuarios();
         }
 
         async function cargarDatos() {
@@ -665,10 +728,108 @@
             cargarPagos();
         }
 
+        // ===== CONFIGURACIÓN: usuarios =====
+        async function cargarUsuarios() {
+            try {
+                const res = await fetch(`${API}/usuarios`);
+                const data = await res.json();
+                mostrarUsuarios(data.usuarios || []);
+            } catch (e) { console.error(e); }
+        }
+
+        function mostrarUsuarios(usuarios) {
+            const tbody = document.getElementById('usuariosTable');
+            if (!usuarios.length) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--gray); padding:2rem;">Sin usuarios</td></tr>';
+                return;
+            }
+            tbody.innerHTML = usuarios.map(u => {
+                const esTuCuenta = currentUser && currentUser.id === u.id;
+                const rolBadge = u.rol === 'admin'
+                    ? '<span class="state-badge pagada">👑 Admin</span>'
+                    : '<span class="state-badge pendiente">👤 Usuario</span>';
+                const estadoHtml = u.activo
+                    ? '<span style="color:var(--success); font-weight:600;">✅ Activo</span>'
+                    : '<span style="color:var(--gray);">⛔ Inactivo</span>';
+                const fecha = u.created_at
+                    ? new Date(u.created_at).toLocaleDateString('es-CL')
+                    : '-';
+                const acciones = esTuCuenta
+                    ? '<span style="color:var(--gray); font-size:0.8rem; font-style:italic;">Tu cuenta</span>'
+                    : `<button class="btn-danger" onclick="eliminarUsuario(${u.id}, '${u.nombre.replace(/'/g,"\\'")}')">🗑️ Eliminar</button>`;
+                return `<tr>
+                    <td><strong>${u.nombre}</strong></td>
+                    <td>${u.email}</td>
+                    <td>${rolBadge}</td>
+                    <td>${estadoHtml}</td>
+                    <td style="font-size:0.8rem; color:var(--gray);">${fecha}</td>
+                    <td>${acciones}</td>
+                </tr>`;
+            }).join('');
+        }
+
+        async function crearUsuario() {
+            const nombre   = document.getElementById('nuevoNombre').value.trim();
+            const email    = document.getElementById('nuevoEmail').value.trim();
+            const password = document.getElementById('nuevoPassword').value;
+            const rol      = document.getElementById('nuevoRol').value;
+            const msgEl    = document.getElementById('usuarioMsg');
+
+            if (!nombre || !email || !password) {
+                msgEl.innerHTML = '<div class="msg error">❌ Nombre, email y contraseña son requeridos</div>';
+                return;
+            }
+            try {
+                const res = await fetch(`${API}/usuarios`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ nombre, email, password, rol })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    msgEl.innerHTML = '<div class="msg success">✅ Usuario creado correctamente</div>';
+                    document.getElementById('nuevoNombre').value = '';
+                    document.getElementById('nuevoEmail').value = '';
+                    document.getElementById('nuevoPassword').value = '';
+                    document.getElementById('nuevoRol').value = 'usuario';
+                    cargarUsuarios();
+                    setTimeout(() => msgEl.innerHTML = '', 3000);
+                } else {
+                    msgEl.innerHTML = `<div class="msg error">❌ ${data.message || data.error}</div>`;
+                }
+            } catch (e) {
+                msgEl.innerHTML = '<div class="msg error">❌ Error de conexión</div>';
+            }
+        }
+
+        async function eliminarUsuario(id, nombre) {
+            if (!confirm(`¿Eliminar al usuario "${nombre}"?\nEsta acción no se puede deshacer.`)) return;
+            try {
+                const res = await fetch(`${API}/usuarios/${id}`, { method: 'DELETE' });
+                const data = await res.json();
+                if (data.success) {
+                    cargarUsuarios();
+                } else {
+                    alert('No se pudo eliminar: ' + (data.message || data.error));
+                }
+            } catch (e) {
+                alert('Error de conexión');
+            }
+        }
+
         window.addEventListener('load', () => {
             const t = localStorage.getItem('token');
+            const u = localStorage.getItem('currentUser');
             if (t) {
                 token = t;
+                if (u) {
+                    try {
+                        currentUser = JSON.parse(u);
+                        if (currentUser && currentUser.rol === 'admin') {
+                            document.getElementById('navConfiguracion').style.display = 'block';
+                        }
+                    } catch(e) {}
+                }
                 document.getElementById('authOverlay').classList.add('hidden');
                 document.getElementById('appContainer').style.display = 'flex';
                 cargarDatos();

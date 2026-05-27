@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import pg from 'pg';
+import bcrypt from 'bcryptjs';
 import multer from 'multer';
 import XLSX from 'xlsx';
 import fs from 'fs';
@@ -62,6 +63,18 @@ async function initDB() {
         )
     `);
 
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS usuarios (
+            id            SERIAL PRIMARY KEY,
+            nombre        TEXT NOT NULL,
+            email         TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            rol           TEXT DEFAULT 'usuario',
+            activo        BOOLEAN DEFAULT true,
+            created_at    TIMESTAMPTZ DEFAULT NOW()
+        )
+    `);
+
     // Migraciones (agrega columnas si no existen, ignora error si ya existen)
     const migraciones = [
         `ALTER TABLE facturas ADD COLUMN IF NOT EXISTS medio_pago TEXT`,
@@ -69,6 +82,17 @@ async function initDB() {
     ];
     for (const sql of migraciones) {
         await pool.query(sql).catch(() => {});
+    }
+
+    // Seed: crear admin por defecto si no hay usuarios
+    const count = await pool.query('SELECT COUNT(*) FROM usuarios');
+    if (parseInt(count.rows[0].count) === 0) {
+        const hash = await bcrypt.hash('admin123', 10);
+        await pool.query(
+            'INSERT INTO usuarios (nombre, email, password_hash, rol) VALUES ($1,$2,$3,$4)',
+            ['Administrador', 'usuario1@empresa.com', hash, 'admin']
+        );
+        console.log('✅ Usuario admin creado por defecto');
     }
 
     console.log('✅ Tablas listas');
@@ -79,16 +103,28 @@ initDB().catch(err => console.error('❌ Error iniciando DB:', err.message));
 // ========== RUTAS ==========
 
 // LOGIN
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', async (req, res) => {
     const { email, password } = req.body;
-    if (email === 'usuario1@empresa.com' && password === 'admin123') {
+    try {
+        const result = await pool.query(
+            'SELECT * FROM usuarios WHERE email=$1 AND activo=true',
+            [email.toLowerCase().trim()]
+        );
+        if (!result.rows.length)
+            return res.json({ success: false, message: 'Email o contraseña incorrectos' });
+
+        const user = result.rows[0];
+        const match = await bcrypt.compare(password, user.password_hash);
+        if (!match)
+            return res.json({ success: false, message: 'Email o contraseña incorrectos' });
+
         res.json({
             success: true,
             token: 'token_' + Date.now(),
-            user: { email, nombre: 'Usuario 1' }
+            user: { id: user.id, email: user.email, nombre: user.nombre, rol: user.rol }
         });
-    } else {
-        res.json({ success: false, message: 'Credenciales incorrectas' });
+    } catch (err) {
+        res.json({ success: false, error: err.message });
     }
 });
 
@@ -276,6 +312,57 @@ app.post('/api/upload/excel', upload.single('file'), async (req, res) => {
         });
     } catch (error) {
         res.json({ success: false, error: error.message });
+    }
+});
+
+// ========== USUARIOS ==========
+
+// GET usuarios
+app.get('/api/usuarios', async (req, res) => {
+    try {
+        const result = await pool.query(
+            'SELECT id, nombre, email, rol, activo, created_at FROM usuarios ORDER BY created_at'
+        );
+        res.json({ success: true, usuarios: result.rows });
+    } catch (err) {
+        res.json({ success: false, error: err.message });
+    }
+});
+
+// POST usuario (crear)
+app.post('/api/usuarios', async (req, res) => {
+    const { nombre, email, password, rol } = req.body;
+    if (!nombre || !email || !password)
+        return res.json({ success: false, message: 'Nombre, email y contraseña son requeridos' });
+    try {
+        const hash = await bcrypt.hash(password, 10);
+        const result = await pool.query(
+            'INSERT INTO usuarios (nombre, email, password_hash, rol) VALUES ($1,$2,$3,$4) RETURNING id',
+            [nombre, email.toLowerCase().trim(), hash, rol || 'usuario']
+        );
+        res.json({ success: true, id: result.rows[0].id });
+    } catch (err) {
+        if (err.code === '23505')
+            return res.json({ success: false, message: 'Ya existe un usuario con ese email' });
+        res.json({ success: false, error: err.message });
+    }
+});
+
+// DELETE usuario
+app.delete('/api/usuarios/:id', async (req, res) => {
+    try {
+        const user = await pool.query('SELECT rol FROM usuarios WHERE id=$1', [req.params.id]);
+        if (!user.rows.length) return res.json({ success: false, message: 'Usuario no encontrado' });
+
+        if (user.rows[0].rol === 'admin') {
+            const admins = await pool.query("SELECT COUNT(*) FROM usuarios WHERE rol='admin' AND activo=true");
+            if (parseInt(admins.rows[0].count) <= 1)
+                return res.json({ success: false, message: 'No se puede eliminar el único administrador' });
+        }
+        await pool.query('DELETE FROM usuarios WHERE id=$1', [req.params.id]);
+        res.json({ success: true });
+    } catch (err) {
+        res.json({ success: false, error: err.message });
     }
 });
 
