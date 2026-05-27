@@ -70,6 +70,10 @@
         input[type="date"], input[type="text"], input[type="number"] { width: 100%; padding: 0.8rem; border: 1px solid var(--border); border-radius: 6px; font-size: 0.95rem; }
         .filtros-grid { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 1rem; align-items: end; }
         @media (max-width: 900px) { .filtros-grid { grid-template-columns: 1fr 1fr; } .cheque-row { grid-template-columns: 1fr 1fr; } }
+        .state-badge.por_vencer { background: #ffedd5; color: #9a3412; }
+        .state-badge.vencida    { background: #fee2e2; color: #b91c1c; }
+        .reporte-bar { height: 10px; border-radius: 5px; background: #e5e7eb; overflow: hidden; margin-top: 0.4rem; }
+        .reporte-bar-fill { height: 100%; border-radius: 5px; transition: width 0.6s ease; }
     </style>
 </head>
 <body>
@@ -104,6 +108,7 @@
                 <div class="nav-item" onclick="cambiarSeccion('importar')">📥 Importar Excel</div>
                 <div class="nav-item" onclick="cambiarSeccion('inventario')">📦 Inventario</div>
                 <div class="nav-item" onclick="cambiarSeccion('pagos')">💳 Pagos</div>
+                <div class="nav-item" onclick="cambiarSeccion('reportes')">📊 Reportes</div>
                 <div class="nav-item" id="navConfiguracion" style="display:none;" onclick="cambiarSeccion('configuracion')">⚙️ Configuración</div>
             </div>
             <div class="sidebar-footer">
@@ -125,7 +130,8 @@
                         <div class="kpi-card"><div class="kpi-label">Monto Total</div><div class="kpi-value" id="kpi-monto">$0</div></div>
                         <div class="kpi-card"><div class="kpi-label">Pendientes</div><div class="kpi-value" id="kpi-pendientes">0</div></div>
                         <div class="kpi-card"><div class="kpi-label">Pagadas</div><div class="kpi-value" id="kpi-pagadas">0</div></div>
-                        <div class="kpi-card"><div class="kpi-label">Productos</div><div class="kpi-value" id="kpi-productos">0</div></div>
+                        <div class="kpi-card" style="border-left-color:#f97316;"><div class="kpi-label">Por Vencer</div><div class="kpi-value" id="kpi-por-vencer" style="color:#f97316;">0</div></div>
+                        <div class="kpi-card" style="border-left-color:#ef4444;"><div class="kpi-label">Vencidas</div><div class="kpi-value" id="kpi-vencidas" style="color:#ef4444;">0</div></div>
                     </div>
                     <h3 style="margin: 2rem 0 1rem;">Últimas Facturas</h3>
                     <table class="table">
@@ -156,12 +162,13 @@
                             <tr>
                                 <th>Folio</th>
                                 <th>Proveedor</th>
+                                <th>RUT</th>
                                 <th style="cursor:pointer; user-select:none;" onclick="toggleSortFecha()">Fecha <span id="sortIcon">▼</span></th>
                                 <th>Monto</th>
                                 <th>Estado</th>
                             </tr>
                         </thead>
-                        <tbody id="facturasTable"><tr><td colspan="5" style="text-align: center;">Cargando...</td></tr></tbody>
+                        <tbody id="facturasTable"><tr><td colspan="6" style="text-align: center;">Cargando...</td></tr></tbody>
                     </table>
                 </section>
 
@@ -190,6 +197,14 @@
 
                 <section id="pagos" class="section">
                     <h2>💳 Pagos</h2>
+
+                    <!-- Resumen facturas pendientes -->
+                    <div class="white-card" style="margin-bottom:0;">
+                        <h3 style="margin-bottom:0.8rem; font-size:0.95rem; color:var(--gray);">📋 Facturas Pendientes de Pago</h3>
+                        <div id="pendientesStats" style="display:flex; gap:0.8rem; flex-wrap:wrap;">
+                            <span style="color:var(--gray); font-size:0.9rem;">Cargando...</span>
+                        </div>
+                    </div>
 
                     <!-- Formulario de registro -->
                     <div class="white-card">
@@ -340,6 +355,69 @@
                         </table>
                     </div>
                 </section>
+
+                <section id="reportes" class="section">
+                    <h2>📊 Reporte Financiero</h2>
+
+                    <!-- KPIs -->
+                    <div class="kpi-grid">
+                        <div class="kpi-card">
+                            <div class="kpi-label">Total Facturas</div>
+                            <div class="kpi-value" id="rep-total-count" style="font-size:1.5rem;">0</div>
+                            <div style="font-size:0.85rem; color:var(--gray); margin-top:0.3rem;" id="rep-total-monto">$0</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-label">Pendientes</div>
+                            <div class="kpi-value" id="rep-pendiente-count" style="font-size:1.5rem; color:#92400e;">0</div>
+                            <div style="font-size:0.85rem; color:var(--gray); margin-top:0.3rem;" id="rep-pendiente-monto">$0</div>
+                        </div>
+                        <div class="kpi-card" style="border-left-color:#f97316;">
+                            <div class="kpi-label">Por Vencer</div>
+                            <div class="kpi-value" id="rep-porvencer-count" style="font-size:1.5rem; color:#f97316;">0</div>
+                            <div style="font-size:0.85rem; color:var(--gray); margin-top:0.3rem;" id="rep-porvencer-monto">$0</div>
+                        </div>
+                        <div class="kpi-card" style="border-left-color:#ef4444;">
+                            <div class="kpi-label">Vencidas</div>
+                            <div class="kpi-value" id="rep-vencida-count" style="font-size:1.5rem; color:#ef4444;">0</div>
+                            <div style="font-size:0.85rem; color:var(--gray); margin-top:0.3rem;" id="rep-vencida-monto">$0</div>
+                        </div>
+                        <div class="kpi-card" style="border-left-color:#10b981;">
+                            <div class="kpi-label">Pagadas</div>
+                            <div class="kpi-value" id="rep-pagada-count" style="font-size:1.5rem; color:#10b981;">0</div>
+                            <div style="font-size:0.85rem; color:var(--gray); margin-top:0.3rem;" id="rep-pagada-monto">$0</div>
+                        </div>
+                    </div>
+
+                    <div class="grid-2">
+                        <div class="white-card">
+                            <h3 style="font-size:1rem; margin-bottom:1rem;">📉 Distribución por Estado</h3>
+                            <div id="rep-distribucion">Cargando...</div>
+                        </div>
+                        <div class="white-card">
+                            <h3 style="font-size:1rem; margin-bottom:1rem;">💰 Pagos por Medio</h3>
+                            <div id="rep-medios">Cargando...</div>
+                        </div>
+                    </div>
+
+                    <div class="white-card">
+                        <h3 style="font-size:1rem; margin-bottom:1rem;">🏢 Resumen por Proveedor</h3>
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Proveedor</th>
+                                    <th>RUT</th>
+                                    <th style="text-align:center;">Facturas</th>
+                                    <th>Monto Total</th>
+                                    <th>Pendiente / Vencido</th>
+                                    <th>Pagado</th>
+                                </tr>
+                            </thead>
+                            <tbody id="rep-proveedores">
+                                <tr><td colspan="6" style="text-align:center; color:var(--gray);">Sin datos</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
             </div>
         </div>
     </div>
@@ -350,6 +428,21 @@
         let currentUser = null;
         let facturas = [];
         let productos = [];
+
+        // ===== ESTADO CALCULADO (lógica de vencimiento) =====
+        function calcularEstado(f) {
+            if (f.estado === 'pagada') return 'pagada';
+            const hoy  = new Date();
+            const fecha = new Date((f.fecha || '') + 'T00:00:00');
+            if (isNaN(fecha.getTime())) return f.estado || 'pendiente';
+            const dias = Math.floor((hoy - fecha) / (1000 * 60 * 60 * 24));
+            if (dias >= 30) return 'vencida';
+            if (dias >= 25) return 'por_vencer';
+            return 'pendiente';
+        }
+        function labelEstado(estado) {
+            return ({ pagada: 'Pagada', pendiente: 'Pendiente', por_vencer: 'Por Vencer', vencida: 'Vencida' })[estado] || estado;
+        }
 
         async function login(e) {
             e.preventDefault();
@@ -397,6 +490,7 @@
             event.target.classList.add('active');
             if (id === 'pagos') cargarPagos();
             if (id === 'configuracion') cargarUsuarios();
+            if (id === 'reportes')      renderReportes();
         }
 
         async function cargarDatos() {
@@ -425,38 +519,51 @@
         let facturasSortDir = 'desc'; // desc = más reciente primero
 
         function mostrarFacturas() {
-            const pendientes = facturas.filter(f => f.estado === 'pendiente').length;
-            const pagadas = facturas.filter(f => f.estado === 'pagada').length;
-            const total = facturas.reduce((sum, f) => sum + (f.monto || 0), 0);
+            const estados     = facturas.map(f => calcularEstado(f));
+            const cPendiente  = estados.filter(e => e === 'pendiente').length;
+            const cPorVencer  = estados.filter(e => e === 'por_vencer').length;
+            const cVencidas   = estados.filter(e => e === 'vencida').length;
+            const cPagadas    = estados.filter(e => e === 'pagada').length;
+            const total       = facturas.reduce((sum, f) => sum + (f.monto || 0), 0);
 
-            document.getElementById('kpi-total').textContent = facturas.length;
-            document.getElementById('kpi-monto').textContent = '$' + total.toLocaleString('es-CL');
-            document.getElementById('kpi-pendientes').textContent = pendientes;
-            document.getElementById('kpi-pagadas').textContent = pagadas;
-            document.getElementById('kpi-productos').textContent = productos.length;
+            document.getElementById('kpi-total').textContent      = facturas.length;
+            document.getElementById('kpi-monto').textContent      = '$' + total.toLocaleString('es-CL');
+            document.getElementById('kpi-pendientes').textContent = cPendiente + cPorVencer + cVencidas;
+            document.getElementById('kpi-pagadas').textContent    = cPagadas;
+            document.getElementById('kpi-por-vencer').textContent = cPorVencer;
+            document.getElementById('kpi-vencidas').textContent   = cVencidas;
 
             // Dashboard: últimas 10 ordenadas por fecha desc
             const dashHtml = [...facturas]
                 .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''))
                 .slice(0, 10)
-                .map(f => `
-                    <tr>
+                .map(f => {
+                    const est = calcularEstado(f);
+                    return `<tr>
                         <td>${f.folio}</td>
-                        <td>${f.proveedor}</td>
+                        <td>${f.proveedor || '-'}</td>
                         <td>${f.fecha}</td>
                         <td>$${(f.monto || 0).toLocaleString('es-CL')}</td>
-                        <td><span class="state-badge ${f.estado}">${f.estado}</span></td>
-                    </tr>
-                `).join('');
+                        <td><span class="state-badge ${est}">${labelEstado(est)}</span></td>
+                    </tr>`;
+                }).join('');
             document.getElementById('dashboardTable').innerHTML = dashHtml || '<tr><td colspan="5" style="text-align: center;">Sin facturas</td></tr>';
 
             // Tabla facturas: con filtro y ordenamiento
             renderTablaFacturas();
 
-            // Select de pagos
+            // Select de pagos: solo facturas no pagadas, con indicador de urgencia
             const select = document.getElementById('selectFactura');
             select.innerHTML = '<option value="">-- Selecciona --</option>' +
-                facturas.map(f => `<option value="${f.id}">${f.folio} - ${f.proveedor}</option>`).join('');
+                facturas
+                    .filter(f => f.estado !== 'pagada')
+                    .map(f => {
+                        const est    = calcularEstado(f);
+                        const prefix = est === 'vencida' ? '🔴' : est === 'por_vencer' ? '🟠' : '⏳';
+                        return `<option value="${f.id}">${prefix} ${f.folio} — ${f.proveedor || ''}${f.rut ? ' · ' + f.rut : ''}</option>`;
+                    }).join('');
+
+            mostrarPendientesPagos();
         }
 
         function renderTablaFacturas() {
@@ -475,17 +582,19 @@
                 return facturasSortDir === 'asc' ? cmp : -cmp;
             });
 
-            const html = lista.map(f => `
-                <tr>
+            const html = lista.map(f => {
+                const est = calcularEstado(f);
+                return `<tr>
                     <td>${f.folio}</td>
-                    <td>${f.proveedor}</td>
+                    <td>${f.proveedor || '-'}</td>
+                    <td style="font-size:0.82rem; color:var(--gray);">${f.rut || '-'}</td>
                     <td>${f.fecha}</td>
                     <td>$${(f.monto || 0).toLocaleString('es-CL')}</td>
-                    <td><span class="state-badge ${f.estado}">${f.estado}</span></td>
-                </tr>
-            `).join('');
+                    <td><span class="state-badge ${est}">${labelEstado(est)}</span></td>
+                </tr>`;
+            }).join('');
 
-            document.getElementById('facturasTable').innerHTML = html || '<tr><td colspan="5" style="text-align: center; color:var(--gray);">Sin resultados</td></tr>';
+            document.getElementById('facturasTable').innerHTML = html || '<tr><td colspan="6" style="text-align: center; color:var(--gray);">Sin resultados</td></tr>';
 
             // Info de filtro
             const info = document.getElementById('facturasFiltroInfo');
@@ -726,6 +835,139 @@
             document.getElementById('filtroDesde').value = '';
             document.getElementById('filtroHasta').value = '';
             cargarPagos();
+        }
+
+        // ===== PAGOS: resumen de pendientes =====
+        function mostrarPendientesPagos() {
+            const el = document.getElementById('pendientesStats');
+            if (!el) return;
+            const unpaid = facturas.filter(f => f.estado !== 'pagada');
+            const sumar  = arr => arr.reduce((s, f) => s + (f.monto || 0), 0);
+            const grupos = { vencida: [], por_vencer: [], pendiente: [] };
+            unpaid.forEach(f => { const e = calcularEstado(f); (grupos[e] || grupos.pendiente).push(f); });
+
+            if (!unpaid.length) {
+                el.innerHTML = '<span style="color:var(--success); font-weight:600;">✅ No hay facturas pendientes de pago</span>';
+                return;
+            }
+            const items = [
+                { key: 'vencida',    label: '🔴 Vencidas',   color: '#b91c1c', bg: '#fee2e2' },
+                { key: 'por_vencer', label: '🟠 Por Vencer', color: '#9a3412', bg: '#ffedd5' },
+                { key: 'pendiente',  label: '⏳ Pendientes', color: '#92400e', bg: '#fef3c7' },
+            ];
+            el.innerHTML = items.filter(i => grupos[i.key].length).map(i => `
+                <div style="padding:0.7rem 1.2rem; background:${i.bg}; border-radius:8px; border-left:3px solid ${i.color}; min-width:150px;">
+                    <div style="font-weight:700; color:${i.color}; font-size:0.85rem;">${i.label}</div>
+                    <div style="font-size:0.8rem; color:var(--gray); margin-top:0.15rem;">${grupos[i.key].length} factura${grupos[i.key].length > 1 ? 's' : ''}</div>
+                    <div style="font-size:1.1rem; font-weight:700; color:${i.color}; margin-top:0.1rem;">$${sumar(grupos[i.key]).toLocaleString('es-CL')}</div>
+                </div>`).join('') + `
+                <div style="padding:0.7rem 1.2rem; background:#f3f4f6; border-radius:8px; border-left:3px solid #9ca3af; min-width:150px;">
+                    <div style="font-weight:700; color:#6b7280; font-size:0.85rem;">📋 Total</div>
+                    <div style="font-size:0.8rem; color:var(--gray); margin-top:0.15rem;">${unpaid.length} facturas</div>
+                    <div style="font-size:1.1rem; font-weight:700; color:#374151; margin-top:0.1rem;">$${sumar(unpaid).toLocaleString('es-CL')}</div>
+                </div>`;
+        }
+
+        // ===== REPORTES FINANCIEROS =====
+        function renderReportes() {
+            const todas = facturas.map(f => ({ ...f, estadoCalc: calcularEstado(f) }));
+            const sumar = arr => arr.reduce((s, f) => s + (f.monto || 0), 0);
+            const grupos = {
+                pendiente:  todas.filter(f => f.estadoCalc === 'pendiente'),
+                por_vencer: todas.filter(f => f.estadoCalc === 'por_vencer'),
+                vencida:    todas.filter(f => f.estadoCalc === 'vencida'),
+                pagada:     todas.filter(f => f.estadoCalc === 'pagada'),
+            };
+            const montoTotal = sumar(todas);
+            const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+
+            // KPIs
+            set('rep-total-count',     todas.length);
+            set('rep-total-monto',     '$' + montoTotal.toLocaleString('es-CL'));
+            set('rep-pendiente-count', grupos.pendiente.length);
+            set('rep-pendiente-monto', '$' + sumar(grupos.pendiente).toLocaleString('es-CL'));
+            set('rep-porvencer-count', grupos.por_vencer.length);
+            set('rep-porvencer-monto', '$' + sumar(grupos.por_vencer).toLocaleString('es-CL'));
+            set('rep-vencida-count',   grupos.vencida.length);
+            set('rep-vencida-monto',   '$' + sumar(grupos.vencida).toLocaleString('es-CL'));
+            set('rep-pagada-count',    grupos.pagada.length);
+            set('rep-pagada-monto',    '$' + sumar(grupos.pagada).toLocaleString('es-CL'));
+
+            // Distribución por estado (barras)
+            const distEl = document.getElementById('rep-distribucion');
+            if (distEl) {
+                const barItems = [
+                    { key: 'pendiente',  label: 'Pendiente',  color: '#92400e' },
+                    { key: 'por_vencer', label: 'Por Vencer', color: '#f97316' },
+                    { key: 'vencida',    label: 'Vencida',    color: '#b91c1c' },
+                    { key: 'pagada',     label: 'Pagada',     color: '#10b981' },
+                ];
+                distEl.innerHTML = !todas.length
+                    ? '<p style="color:var(--gray); text-align:center;">Sin datos</p>'
+                    : barItems.map(item => {
+                        const cnt = grupos[item.key].length;
+                        const mnt = sumar(grupos[item.key]);
+                        const pct = todas.length > 0 ? Math.round((cnt / todas.length) * 100) : 0;
+                        return `<div style="margin-bottom:1.1rem;">
+                            <div style="display:flex; justify-content:space-between; font-size:0.82rem; margin-bottom:0.3rem;">
+                                <span style="font-weight:700; color:${item.color};">${item.label}</span>
+                                <span style="color:var(--gray);">${cnt} (${pct}%) · $${mnt.toLocaleString('es-CL')}</span>
+                            </div>
+                            <div class="reporte-bar"><div class="reporte-bar-fill" style="width:${pct}%; background:${item.color};"></div></div>
+                        </div>`;
+                    }).join('');
+            }
+
+            // Medios de pago
+            const mediosEl = document.getElementById('rep-medios');
+            if (mediosEl) {
+                if (!grupos.pagada.length) {
+                    mediosEl.innerHTML = '<p style="color:var(--gray); text-align:center; padding:1rem;">Sin pagos registrados</p>';
+                } else {
+                    const tf = grupos.pagada.filter(f => f.medio_pago === 'transferencia');
+                    const ch = grupos.pagada.filter(f => f.medio_pago === 'cheque');
+                    const ot = grupos.pagada.filter(f => !['transferencia','cheque'].includes(f.medio_pago));
+                    const medios = [
+                        { label: '🏦 Transferencia', arr: tf, color: '#1e40af' },
+                        { label: '📄 Cheque',        arr: ch, color: '#9d174d' },
+                        ...(ot.length ? [{ label: '❓ Otro', arr: ot, color: '#6b7280' }] : []),
+                    ];
+                    mediosEl.innerHTML = medios.map(m => `
+                        <div style="display:flex; justify-content:space-between; align-items:center; padding:0.8rem; background:#f9fafb; border-radius:6px; border-left:3px solid ${m.color}; margin-bottom:0.7rem;">
+                            <span style="font-weight:600; color:${m.color};">${m.label}</span>
+                            <span style="text-align:right;">
+                                <span style="font-size:0.8rem; color:var(--gray);">${m.arr.length} factura${m.arr.length !== 1 ? 's' : ''}</span><br>
+                                <strong>$${sumar(m.arr).toLocaleString('es-CL')}</strong>
+                            </span>
+                        </div>`).join('');
+                }
+            }
+
+            // Por proveedor
+            const provEl = document.getElementById('rep-proveedores');
+            if (provEl) {
+                const prov = {};
+                todas.forEach(f => {
+                    const k = f.proveedor || 'Sin nombre';
+                    if (!prov[k]) prov[k] = { nombre: k, rut: f.rut || '-', n: 0, total: 0, pend: 0, pag: 0 };
+                    prov[k].n++;
+                    prov[k].total += (f.monto || 0);
+                    if (f.estadoCalc !== 'pagada') prov[k].pend += (f.monto || 0);
+                    else                           prov[k].pag  += (f.monto || 0);
+                    if (f.rut && f.rut !== '-') prov[k].rut = f.rut;
+                });
+                const lista = Object.values(prov).sort((a, b) => b.total - a.total);
+                provEl.innerHTML = lista.length
+                    ? lista.map(p => `<tr>
+                        <td><strong>${p.nombre}</strong></td>
+                        <td style="font-size:0.82rem; color:var(--gray);">${p.rut}</td>
+                        <td style="text-align:center;">${p.n}</td>
+                        <td>$${p.total.toLocaleString('es-CL')}</td>
+                        <td style="color:${p.pend > 0 ? '#b91c1c' : 'var(--gray)'};">$${p.pend.toLocaleString('es-CL')}</td>
+                        <td style="color:#10b981;">$${p.pag.toLocaleString('es-CL')}</td>
+                    </tr>`).join('')
+                    : '<tr><td colspan="6" style="text-align:center; color:var(--gray);">Sin datos</td></tr>';
+            }
         }
 
         // ===== CONFIGURACIÓN: usuarios =====

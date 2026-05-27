@@ -79,6 +79,7 @@ async function initDB() {
     const migraciones = [
         `ALTER TABLE facturas ADD COLUMN IF NOT EXISTS medio_pago TEXT`,
         `ALTER TABLE facturas ADD COLUMN IF NOT EXISTS fecha_pago TEXT`,
+        `ALTER TABLE facturas ADD COLUMN IF NOT EXISTS rut TEXT`,
     ];
     for (const sql of migraciones) {
         await pool.query(sql).catch(() => {});
@@ -140,14 +141,14 @@ app.get('/api/facturas', async (req, res) => {
 
 // POST FACTURA
 app.post('/api/facturas', async (req, res) => {
-    const { folio, fecha, proveedor, monto, estado } = req.body;
+    const { folio, fecha, proveedor, rut, monto, estado } = req.body;
     if (!folio || !monto) {
         return res.json({ success: false, message: 'Folio y monto son requeridos' });
     }
     try {
         const result = await pool.query(
-            'INSERT INTO facturas (folio, fecha, proveedor, monto, estado) VALUES ($1,$2,$3,$4,$5) RETURNING id',
-            [folio, fecha, proveedor, monto, estado || 'pendiente']
+            'INSERT INTO facturas (folio, fecha, proveedor, rut, monto, estado) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id',
+            [folio, fecha, proveedor, rut || null, monto, estado || 'pendiente']
         );
         res.json({ success: true, id: result.rows[0].id });
     } catch (err) {
@@ -286,29 +287,47 @@ app.post('/api/upload/excel', upload.single('file'), async (req, res) => {
             } else {
                 fecha = String(fecha).split(' ')[0];
             }
+            // Extraer RUT — prueba múltiples nombres de columna del SII
+            const rut = String(
+                row['Rut'] || row['RUT'] || row['R.U.T.'] || row['R.U.T'] ||
+                row['Rut Proveedor'] || row['RUT Proveedor'] || row['rut'] || ''
+            ).trim();
             return {
                 folio:     String(row['Folio'] || '').trim(),
                 fecha:     fecha.trim(),
                 proveedor: String(row['Nombre'] || '').trim(),
+                rut:       rut,
                 monto:     parseInt(String(row['Total'] || 0).replace(/[^0-9]/g, '')) || 0,
             };
         }).filter(f => f.folio && f.monto > 0);
 
-        let insertadas = 0;
+        // Obtener folios existentes para evitar duplicados (conserva versión anterior)
+        const existingResult = await pool.query('SELECT folio FROM facturas');
+        const existingFolios = new Set(existingResult.rows.map(r => r.folio));
+
+        let insertadas = 0, omitidas = 0;
         for (const f of facturas) {
-            await pool.query(
-                'INSERT INTO facturas (folio, fecha, proveedor, monto, estado) VALUES ($1,$2,$3,$4,$5)',
-                [f.folio, f.fecha, f.proveedor, f.monto, 'pendiente']
-            ).catch(() => {}); // ignora duplicados
-            insertadas++;
+            if (existingFolios.has(f.folio)) {
+                omitidas++;
+                continue;
+            }
+            try {
+                await pool.query(
+                    'INSERT INTO facturas (folio, fecha, proveedor, rut, monto, estado) VALUES ($1,$2,$3,$4,$5,$6)',
+                    [f.folio, f.fecha, f.proveedor, f.rut || null, f.monto, 'pendiente']
+                );
+                existingFolios.add(f.folio); // evita duplicados dentro del mismo archivo
+                insertadas++;
+            } catch (e) { omitidas++; }
         }
 
         if (req.file.path) fs.unlinkSync(req.file.path);
         res.json({
             success: true,
             insertadas,
+            omitidas,
             total: facturas.length,
-            message: `${insertadas}/${facturas.length} facturas importadas`
+            message: `${insertadas}/${facturas.length} facturas importadas${omitidas > 0 ? ` · ${omitidas} duplicadas omitidas` : ''}`
         });
     } catch (error) {
         res.json({ success: false, error: error.message });
