@@ -282,6 +282,24 @@ app.post('/api/cheques/:facturaId', async (req, res) => {
     }
 });
 
+// Búsqueda flexible de columna en una fila de Excel
+// Ignora mayúsculas/minúsculas, tildes, espacios extra y no-breaking spaces
+function getCol(row, ...keys) {
+    // 1) Match exacto
+    for (const k of keys) {
+        const v = row[k];
+        if (v !== undefined && v !== null && String(v).trim() !== '') return v;
+    }
+    // 2) Match normalizado (sin tildes, todo minúscula, espacios simples)
+    const norm = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '')
+                        .toLowerCase().replace(/[ \s]+/g, ' ').trim();
+    const normKeys = keys.map(norm);
+    for (const rowKey of Object.keys(row)) {
+        if (normKeys.includes(norm(rowKey))) return row[rowKey];
+    }
+    return undefined;
+}
+
 // UPLOAD EXCEL
 app.post('/api/upload/excel', upload.single('file'), async (req, res) => {
     try {
@@ -290,24 +308,29 @@ app.post('/api/upload/excel', upload.single('file'), async (req, res) => {
         const data = XLSX.utils.sheet_to_json(worksheet);
 
         const facturas = data.map(row => {
-            let fecha = row['F. Emision'] || '';
+            // Fecha de emisión — acepta variantes con/sin tilde, con/sin espacio
+            const fechaRaw = getCol(row,
+                'F. Emision', 'F. Emisión', 'F.Emision', 'F.Emisión',
+                'Fecha Emision', 'Fecha Emisión', 'fecha_emision', 'FechaEmision'
+            ) || '';
+            let fecha = fechaRaw;
             if (typeof fecha === 'number') {
                 const d = new Date((fecha - 25569) * 86400 * 1000);
                 fecha = d.toISOString().split('T')[0];
             } else {
                 fecha = String(fecha).split(' ')[0];
             }
-            // Extraer RUT — prueba múltiples nombres de columna del SII
-            const rut = String(
-                row['Rut'] || row['RUT'] || row['R.U.T.'] || row['R.U.T'] ||
-                row['Rut Proveedor'] || row['RUT Proveedor'] || row['rut'] || ''
-            ).trim();
+            // RUT — acepta variantes de capitalización
+            const rut = String(getCol(row,
+                'Rut', 'RUT', 'rut', 'R.U.T.', 'R.U.T',
+                'Rut Proveedor', 'RUT Proveedor'
+            ) || '').trim();
             return {
-                folio:     String(row['Folio'] || '').trim(),
+                folio:     String(getCol(row, 'Folio', 'folio', 'FOLIO', 'N° Folio', 'Nro. Folio') || '').trim(),
                 fecha:     fecha.trim(),
-                proveedor: String(row['Nombre'] || '').trim(),
+                proveedor: String(getCol(row, 'Nombre', 'nombre', 'NOMBRE', 'Razón Social', 'Razon Social') || '').trim(),
                 rut:       rut,
-                monto:     parseInt(String(row['Total'] || 0).replace(/[^0-9]/g, '')) || 0,
+                monto:     parseInt(String(getCol(row, 'Total', 'total', 'TOTAL', 'Monto', 'Monto Total') || 0).replace(/[^0-9]/g, '')) || 0,
             };
         }).filter(f => f.folio && f.monto > 0);
 
@@ -318,11 +341,23 @@ app.post('/api/upload/excel', upload.single('file'), async (req, res) => {
         let insertadas = 0, omitidas = 0, rutActualizadas = 0;
         for (const f of facturas) {
             if (existingFolios.has(f.folio)) {
-                // Folio ya existe: actualizar RUT si el registro no lo tenía
-                if (f.rut) {
+                // Folio ya existe: completar campos vacíos (rut, proveedor, fecha)
+                const setClauses = [];
+                const params     = [];
+                let   pi         = 1;
+                if (f.rut)       { setClauses.push(`rut=$${pi++}`);       params.push(f.rut); }
+                if (f.proveedor) { setClauses.push(`proveedor=$${pi++}`); params.push(f.proveedor); }
+                if (f.fecha)     { setClauses.push(`fecha=$${pi++}`);     params.push(f.fecha); }
+                if (setClauses.length) {
+                    params.push(f.folio);
+                    // Solo actualiza si el campo correspondiente está vacío
+                    const whereRut  = f.rut       ? "(rut IS NULL OR rut='')"            : null;
+                    const whereProv = f.proveedor ? "(proveedor IS NULL OR proveedor='')" : null;
+                    const whereFech = f.fecha     ? "(fecha IS NULL OR fecha='')"         : null;
+                    const whereCond = [whereRut, whereProv, whereFech].filter(Boolean).join(' OR ');
                     const upd = await pool.query(
-                        "UPDATE facturas SET rut=$1 WHERE folio=$2 AND (rut IS NULL OR rut='')",
-                        [f.rut, f.folio]
+                        `UPDATE facturas SET ${setClauses.join(',')} WHERE folio=$${pi} AND (${whereCond})`,
+                        params
                     ).catch(() => ({ rowCount: 0 }));
                     if (upd.rowCount > 0) rutActualizadas++;
                 }
