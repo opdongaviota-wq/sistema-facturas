@@ -80,6 +80,7 @@ async function initDB() {
         `ALTER TABLE facturas ADD COLUMN IF NOT EXISTS medio_pago TEXT`,
         `ALTER TABLE facturas ADD COLUMN IF NOT EXISTS fecha_pago TEXT`,
         `ALTER TABLE facturas ADD COLUMN IF NOT EXISTS rut TEXT`,
+        `ALTER TABLE facturas ADD COLUMN IF NOT EXISTS tipo_doc TEXT`,
     ];
     for (const sql of migraciones) {
         await pool.query(sql).catch(() => {});
@@ -141,14 +142,14 @@ app.get('/api/facturas', async (req, res) => {
 
 // POST FACTURA
 app.post('/api/facturas', async (req, res) => {
-    const { folio, fecha, proveedor, rut, monto, estado } = req.body;
+    const { folio, fecha, proveedor, rut, tipo_doc, monto, estado } = req.body;
     if (!folio || !monto) {
         return res.json({ success: false, message: 'Folio y monto son requeridos' });
     }
     try {
         const result = await pool.query(
-            'INSERT INTO facturas (folio, fecha, proveedor, rut, monto, estado) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id',
-            [folio, fecha, proveedor, rut || null, monto, estado || 'pendiente']
+            'INSERT INTO facturas (folio, fecha, proveedor, rut, tipo_doc, monto, estado) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id',
+            [folio, fecha, proveedor, rut || null, tipo_doc || null, monto, estado || 'pendiente']
         );
         res.json({ success: true, id: result.rows[0].id });
     } catch (err) {
@@ -326,6 +327,7 @@ app.post('/api/upload/excel', upload.single('file'), async (req, res) => {
                 'Rut Proveedor', 'RUT Proveedor'
             ) || '').trim();
             return {
+                tipo_doc:  String(getCol(row, 'Tipo Doc', 'Tipo Doc.', 'tipo_doc', 'TipoDoc', 'Tipo de Documento', 'Tipo') || '').trim(),
                 folio:     String(getCol(row, 'Folio', 'folio', 'FOLIO', 'N° Folio', 'Nro. Folio') || '').trim(),
                 fecha:     fecha.trim(),
                 proveedor: String(getCol(row, 'Nombre', 'nombre', 'NOMBRE', 'Razón Social', 'Razon Social') || '').trim(),
@@ -346,15 +348,17 @@ app.post('/api/upload/excel', upload.single('file'), async (req, res) => {
                 const params     = [];
                 let   pi         = 1;
                 if (f.rut)       { setClauses.push(`rut=$${pi++}`);       params.push(f.rut); }
+                if (f.tipo_doc)  { setClauses.push(`tipo_doc=$${pi++}`);  params.push(f.tipo_doc); }
                 if (f.proveedor) { setClauses.push(`proveedor=$${pi++}`); params.push(f.proveedor); }
                 if (f.fecha)     { setClauses.push(`fecha=$${pi++}`);     params.push(f.fecha); }
                 if (setClauses.length) {
                     params.push(f.folio);
                     // Solo actualiza si el campo correspondiente está vacío
-                    const whereRut  = f.rut       ? "(rut IS NULL OR rut='')"            : null;
-                    const whereProv = f.proveedor ? "(proveedor IS NULL OR proveedor='')" : null;
-                    const whereFech = f.fecha     ? "(fecha IS NULL OR fecha='')"         : null;
-                    const whereCond = [whereRut, whereProv, whereFech].filter(Boolean).join(' OR ');
+                    const whereRut  = f.rut       ? "(rut IS NULL OR rut='')"              : null;
+                    const whereTipo = f.tipo_doc  ? "(tipo_doc IS NULL OR tipo_doc='')"    : null;
+                    const whereProv = f.proveedor ? "(proveedor IS NULL OR proveedor='')"  : null;
+                    const whereFech = f.fecha     ? "(fecha IS NULL OR fecha='')"          : null;
+                    const whereCond = [whereRut, whereTipo, whereProv, whereFech].filter(Boolean).join(' OR ');
                     const upd = await pool.query(
                         `UPDATE facturas SET ${setClauses.join(',')} WHERE folio=$${pi} AND (${whereCond})`,
                         params
@@ -366,8 +370,8 @@ app.post('/api/upload/excel', upload.single('file'), async (req, res) => {
             }
             try {
                 await pool.query(
-                    'INSERT INTO facturas (folio, fecha, proveedor, rut, monto, estado) VALUES ($1,$2,$3,$4,$5,$6)',
-                    [f.folio, f.fecha, f.proveedor, f.rut || null, f.monto, 'pendiente']
+                    'INSERT INTO facturas (folio, fecha, proveedor, rut, tipo_doc, monto, estado) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+                    [f.folio, f.fecha, f.proveedor, f.rut || null, f.tipo_doc || null, f.monto, 'pendiente']
                 );
                 existingFolios.add(f.folio); // evita duplicados dentro del mismo archivo
                 insertadas++;

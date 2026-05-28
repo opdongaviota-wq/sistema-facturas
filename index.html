@@ -81,6 +81,9 @@
         .filtros-reporte { display: grid; grid-template-columns: 2fr 1.5fr 1fr 1fr auto; gap: 0.8rem; align-items: end; margin-bottom: 0.8rem; }
         @media (max-width: 1100px) { .filtros-reporte { grid-template-columns: 1fr 1fr; } }
         .card-header-actions { display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; flex-wrap:wrap; gap:0.5rem; }
+        .btn-periodo { padding: 0.42rem 1rem; border: 1.5px solid var(--border); border-radius: 20px; background: white; cursor: pointer; font-size: 0.82rem; font-weight: 500; color: var(--gray); transition: all 0.2s; white-space: nowrap; }
+        .btn-periodo:hover { border-color: var(--primary); color: var(--primary); background: rgba(37,99,235,0.05); }
+        .btn-periodo.active { background: var(--primary); color: white; border-color: var(--primary); font-weight: 600; }
     </style>
 </head>
 <body>
@@ -150,26 +153,43 @@
                 <section id="facturas" class="section">
                     <h2>📄 Facturas</h2>
                     <div class="white-card" style="padding: 1rem 1.5rem; margin-bottom: 1rem;">
-                        <div style="display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap;">
-                            <div style="flex: 1; min-width: 200px;">
-                                <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:0.3rem; color:var(--gray);">Filtrar por Proveedor:</label>
-                                <input type="text" id="filtroProveedor" placeholder="Buscar proveedor..." oninput="renderTablaFacturas()" style="width:100%; padding:0.7rem; border:1px solid var(--border); border-radius:6px; font-size:0.95rem;">
+                        <!-- Botones de período -->
+                        <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.8rem; align-items:center;">
+                            <span style="font-size:0.78rem; font-weight:700; color:var(--gray); margin-right:0.2rem; white-space:nowrap;">Período:</span>
+                            <button onclick="filtrarPorPeriodo('todos')" id="btn-periodo-todos" class="btn-periodo active">Todos</button>
+                            <button onclick="filtrarPorPeriodo('semana_actual')" id="btn-periodo-semana_actual" class="btn-periodo">📅 Semana Actual</button>
+                            <button onclick="filtrarPorPeriodo('semana_anterior')" id="btn-periodo-semana_anterior" class="btn-periodo">⬅️ Semana Anterior</button>
+                            <button onclick="filtrarPorPeriodo('mes_actual')" id="btn-periodo-mes_actual" class="btn-periodo">🗓️ Mes Actual</button>
+                            <button onclick="filtrarPorPeriodo('mes_anterior')" id="btn-periodo-mes_anterior" class="btn-periodo">📆 Mes Anterior</button>
+                            <button onclick="filtrarPorPeriodo('personalizado')" id="btn-periodo-personalizado" class="btn-periodo">🔧 Personalizado</button>
+                        </div>
+                        <!-- Filtros personalizados: fecha + nombre (solo en modo Personalizado) -->
+                        <div id="filtros-personalizados" style="display:none; flex-wrap:wrap; gap:0.8rem; align-items:flex-end; margin-bottom:0.8rem;">
+                            <div style="flex:1; min-width:180px;">
+                                <label style="display:block; font-size:0.82rem; font-weight:600; margin-bottom:0.3rem; color:var(--gray);">Proveedor / Nombre:</label>
+                                <input type="text" id="filtroProveedor" placeholder="Buscar proveedor..." oninput="renderTablaFacturas()" style="width:100%; padding:0.65rem; border:1px solid var(--border); border-radius:6px; font-size:0.9rem;">
                             </div>
-                            <button onclick="toggleSortFecha()" id="btnSortFecha" style="padding:0.7rem 1.2rem; border:1px solid var(--border); border-radius:6px; background:white; cursor:pointer; font-size:0.9rem; white-space:nowrap;">
-                                📅 Fecha ▼
-                            </button>
-                            <button onclick="limpiarFiltroFacturas()" style="padding:0.7rem 1rem; border:1px solid var(--border); border-radius:6px; background:#f3f4f6; color:var(--gray); cursor:pointer; font-size:0.9rem;">
-                                Limpiar
-                            </button>
-                            <button onclick="limpiarBaseFacturas()" class="btn-limpiar-bd">
-                                🗑️ Limpiar BD
-                            </button>
+                            <div>
+                                <label style="display:block; font-size:0.82rem; font-weight:600; margin-bottom:0.3rem; color:var(--gray);">Desde:</label>
+                                <input type="date" id="filtroDesdeFacturas" onchange="renderTablaFacturas()" style="padding:0.65rem; border:1px solid var(--border); border-radius:6px; font-size:0.9rem;">
+                            </div>
+                            <div>
+                                <label style="display:block; font-size:0.82rem; font-weight:600; margin-bottom:0.3rem; color:var(--gray);">Hasta:</label>
+                                <input type="date" id="filtroHastaFacturas" onchange="renderTablaFacturas()" style="padding:0.65rem; border:1px solid var(--border); border-radius:6px; font-size:0.9rem;">
+                            </div>
+                        </div>
+                        <!-- Controles auxiliares -->
+                        <div style="display:flex; gap:0.8rem; align-items:center; flex-wrap:wrap;">
+                            <button onclick="toggleSortFecha()" id="btnSortFecha" style="padding:0.6rem 1rem; border:1px solid var(--border); border-radius:6px; background:white; cursor:pointer; font-size:0.85rem; white-space:nowrap;">📅 Fecha ▼</button>
+                            <button onclick="limpiarFiltroFacturas()" style="padding:0.6rem 1rem; border:1px solid var(--border); border-radius:6px; background:#f3f4f6; color:var(--gray); cursor:pointer; font-size:0.85rem;">Limpiar</button>
+                            <button onclick="limpiarBaseFacturas()" class="btn-limpiar-bd">🗑️ Limpiar BD</button>
                         </div>
                         <div id="facturasFiltroInfo" style="margin-top:0.5rem; font-size:0.82rem; color:var(--gray);"></div>
                     </div>
                     <table class="table">
                         <thead>
                             <tr>
+                                <th>Tipo Doc</th>
                                 <th>Folio</th>
                                 <th>Proveedor</th>
                                 <th>RUT</th>
@@ -178,7 +198,7 @@
                                 <th>Estado</th>
                             </tr>
                         </thead>
-                        <tbody id="facturasTable"><tr><td colspan="6" style="text-align: center;">Cargando...</td></tr></tbody>
+                        <tbody id="facturasTable"><tr><td colspan="7" style="text-align: center;">Cargando...</td></tr></tbody>
                     </table>
                 </section>
 
@@ -587,6 +607,7 @@
         }
 
         let facturasSortDir = 'desc'; // desc = más reciente primero
+        let filtroPeriodo   = 'todos'; // periodo activo en módulo Facturas
 
         function mostrarFacturas() {
             const estados     = facturas.map(f => calcularEstado(f));
@@ -636,15 +657,60 @@
             mostrarPendientesPagos();
         }
 
+        function getPeriodoDates(periodo) {
+            const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+            const fmt = d => d.toISOString().split('T')[0];
+            if (periodo === 'semana_actual') {
+                const dow = hoy.getDay() || 7;
+                const lunes = new Date(hoy); lunes.setDate(hoy.getDate() - (dow - 1));
+                const domingo = new Date(lunes); domingo.setDate(lunes.getDate() + 6);
+                return { desde: fmt(lunes), hasta: fmt(domingo) };
+            }
+            if (periodo === 'semana_anterior') {
+                const dow = hoy.getDay() || 7;
+                const lunesEsta = new Date(hoy); lunesEsta.setDate(hoy.getDate() - (dow - 1));
+                const lunesAnt = new Date(lunesEsta); lunesAnt.setDate(lunesEsta.getDate() - 7);
+                const domAnt = new Date(lunesAnt); domAnt.setDate(lunesAnt.getDate() + 6);
+                return { desde: fmt(lunesAnt), hasta: fmt(domAnt) };
+            }
+            if (periodo === 'mes_actual') {
+                return { desde: fmt(new Date(hoy.getFullYear(), hoy.getMonth(), 1)),
+                         hasta: fmt(new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0)) };
+            }
+            if (periodo === 'mes_anterior') {
+                return { desde: fmt(new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1)),
+                         hasta: fmt(new Date(hoy.getFullYear(), hoy.getMonth(), 0)) };
+            }
+            return { desde: '', hasta: '' };
+        }
+
+        function filtrarPorPeriodo(periodo) {
+            filtroPeriodo = periodo;
+            document.querySelectorAll('.btn-periodo').forEach(b => b.classList.remove('active'));
+            const btn = document.getElementById('btn-periodo-' + periodo);
+            if (btn) btn.classList.add('active');
+            const custom = document.getElementById('filtros-personalizados');
+            if (custom) custom.style.display = periodo === 'personalizado' ? 'flex' : 'none';
+            renderTablaFacturas();
+        }
+
         function renderTablaFacturas() {
             const texto = (document.getElementById('filtroProveedor')?.value || '').toLowerCase().trim();
 
-            let lista = [...facturas];
-
-            // Filtro por proveedor
-            if (texto) {
-                lista = lista.filter(f => (f.proveedor || '').toLowerCase().includes(texto));
+            // Rango de fechas según período activo
+            let desde = '', hasta = '';
+            if (filtroPeriodo === 'personalizado') {
+                desde = document.getElementById('filtroDesdeFacturas')?.value || '';
+                hasta = document.getElementById('filtroHastaFacturas')?.value || '';
+            } else if (filtroPeriodo !== 'todos') {
+                const rng = getPeriodoDates(filtroPeriodo);
+                desde = rng.desde; hasta = rng.hasta;
             }
+
+            let lista = [...facturas];
+            if (texto)  lista = lista.filter(f => (f.proveedor || '').toLowerCase().includes(texto));
+            if (desde)  lista = lista.filter(f => (f.fecha || '') >= desde);
+            if (hasta)  lista = lista.filter(f => (f.fecha || '') <= hasta);
 
             // Ordenar por fecha
             lista.sort((a, b) => {
@@ -655,6 +721,7 @@
             const html = lista.map(f => {
                 const est = calcularEstado(f);
                 return `<tr>
+                    <td style="font-size:0.82rem; color:var(--gray);">${f.tipo_doc || '-'}</td>
                     <td>${f.folio}</td>
                     <td>${f.proveedor || '-'}</td>
                     <td style="font-size:0.82rem; color:var(--gray);">${f.rut || '-'}</td>
@@ -664,13 +731,22 @@
                 </tr>`;
             }).join('');
 
-            document.getElementById('facturasTable').innerHTML = html || '<tr><td colspan="6" style="text-align: center; color:var(--gray);">Sin resultados</td></tr>';
+            document.getElementById('facturasTable').innerHTML = html || '<tr><td colspan="7" style="text-align: center; color:var(--gray);">Sin resultados</td></tr>';
 
             // Info de filtro
             const info = document.getElementById('facturasFiltroInfo');
             if (info) {
-                info.textContent = texto
-                    ? `Mostrando ${lista.length} de ${facturas.length} facturas — proveedor: "${texto}"`
+                const periodoLabels = { semana_actual: 'Semana Actual', semana_anterior: 'Semana Anterior',
+                                        mes_actual: 'Mes Actual', mes_anterior: 'Mes Anterior', personalizado: 'Personalizado' };
+                const etiquetas = [];
+                if (filtroPeriodo !== 'todos') {
+                    let lbl = periodoLabels[filtroPeriodo] || '';
+                    if (desde || hasta) lbl += (desde ? ' desde ' + desde : '') + (hasta ? ' hasta ' + hasta : '');
+                    etiquetas.push(lbl);
+                }
+                if (texto) etiquetas.push(`proveedor: "${texto}"`);
+                info.textContent = etiquetas.length
+                    ? `Mostrando ${lista.length} de ${facturas.length} facturas — ${etiquetas.join(' · ')}`
                     : `Total: ${lista.length} facturas`;
             }
         }
@@ -688,11 +764,22 @@
         function limpiarFiltroFacturas() {
             const inp = document.getElementById('filtroProveedor');
             if (inp) inp.value = '';
+            const desdeInp = document.getElementById('filtroDesdeFacturas');
+            const hastaInp = document.getElementById('filtroHastaFacturas');
+            if (desdeInp) desdeInp.value = '';
+            if (hastaInp) hastaInp.value = '';
             facturasSortDir = 'desc';
             const icon = document.getElementById('sortIcon');
             const btn = document.getElementById('btnSortFecha');
             if (icon) icon.textContent = '▼';
             if (btn) btn.textContent = '📅 Fecha ▼';
+            // Resetear período a "Todos"
+            filtroPeriodo = 'todos';
+            document.querySelectorAll('.btn-periodo').forEach(b => b.classList.remove('active'));
+            const todosBtn = document.getElementById('btn-periodo-todos');
+            if (todosBtn) todosBtn.classList.add('active');
+            const custom = document.getElementById('filtros-personalizados');
+            if (custom) custom.style.display = 'none';
             renderTablaFacturas();
         }
 
