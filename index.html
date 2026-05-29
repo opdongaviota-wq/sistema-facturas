@@ -33,10 +33,15 @@
         .section { display: none; }
         .section.active { display: block; }
         h2 { font-size: 1.5rem; margin-bottom: 1.5rem; }
-        .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
-        .kpi-card { background: white; padding: 1.5rem; border-radius: 8px; border-left: 4px solid var(--primary); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        .kpi-label { font-size: 0.8rem; color: var(--gray); text-transform: uppercase; font-weight: 600; }
-        .kpi-value { font-size: 1.8rem; font-weight: 700; margin-top: 0.5rem; color: var(--primary); }
+        .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+        .kpi-card { background: white; padding: 1.4rem 1.5rem; border-radius: 12px; border-left: 4px solid var(--primary); box-shadow: 0 2px 8px rgba(0,0,0,0.08); display:flex; flex-direction:column; gap:0.3rem; transition: transform 0.15s, box-shadow 0.15s; }
+        .kpi-card:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.13); }
+        .kpi-header { display:flex; justify-content:space-between; align-items:center; }
+        .kpi-label { font-size: 0.75rem; color: var(--gray); text-transform: uppercase; font-weight: 700; letter-spacing:0.04em; }
+        .kpi-icon { font-size: 1.4rem; opacity: 0.85; }
+        .kpi-value { font-size: 2rem; font-weight: 800; color: var(--primary); line-height:1; }
+        .kpi-sub { font-size: 0.75rem; color: var(--gray); margin-top:0.1rem; }
+        .dash-section-title { font-size:0.8rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--gray); margin: 1.5rem 0 0.7rem; border-left:3px solid var(--primary); padding-left:0.6rem; }
         .white-card { background: white; padding: 1.5rem; border-radius: 8px; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
         .table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
         .table thead { background: #f3f4f6; }
@@ -135,18 +140,44 @@
             <div class="content">
                 <section id="dashboard" class="section active">
                     <h2>📈 Dashboard</h2>
+
                     <div class="kpi-grid">
-                        <div class="kpi-card"><div class="kpi-label">Total Facturas</div><div class="kpi-value" id="kpi-total">0</div></div>
-                        <div class="kpi-card"><div class="kpi-label">Monto Total</div><div class="kpi-value" id="kpi-monto">$0</div></div>
-                        <div class="kpi-card"><div class="kpi-label">Pendientes</div><div class="kpi-value" id="kpi-pendientes">0</div></div>
-                        <div class="kpi-card"><div class="kpi-label">Pagadas</div><div class="kpi-value" id="kpi-pagadas">0</div></div>
-                        <div class="kpi-card" style="border-left-color:#f97316;"><div class="kpi-label">Por Vencer</div><div class="kpi-value" id="kpi-por-vencer" style="color:#f97316;">0</div></div>
-                        <div class="kpi-card" style="border-left-color:#ef4444;"><div class="kpi-label">Vencidas</div><div class="kpi-value" id="kpi-vencidas" style="color:#ef4444;">0</div></div>
+                        <div class="kpi-card">
+                            <div class="kpi-header"><div class="kpi-label">Total Docs</div><div class="kpi-icon">📋</div></div>
+                            <div class="kpi-value" id="kpi-total">0</div>
+                            <div class="kpi-sub">documentos registrados</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-header"><div class="kpi-label">Monto Total</div><div class="kpi-icon">💰</div></div>
+                            <div class="kpi-value" id="kpi-monto" style="font-size:1.4rem;">$0</div>
+                            <div class="kpi-sub">cartera total</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-header"><div class="kpi-label">Pendientes</div><div class="kpi-icon">⏳</div></div>
+                            <div class="kpi-value" id="kpi-pendientes">0</div>
+                            <div class="kpi-sub">sin pagar</div>
+                        </div>
+                        <div class="kpi-card" style="border-left-color:#10b981;">
+                            <div class="kpi-header"><div class="kpi-label">Pagadas</div><div class="kpi-icon">✅</div></div>
+                            <div class="kpi-value" id="kpi-pagadas" style="color:#10b981;">0</div>
+                            <div class="kpi-sub">canceladas</div>
+                        </div>
+                        <div class="kpi-card" style="border-left-color:#f97316;">
+                            <div class="kpi-header"><div class="kpi-label">Por Vencer</div><div class="kpi-icon">🟠</div></div>
+                            <div class="kpi-value" id="kpi-por-vencer" style="color:#f97316;">0</div>
+                            <div class="kpi-sub">próximas a vencer</div>
+                        </div>
+                        <div class="kpi-card" style="border-left-color:#ef4444;">
+                            <div class="kpi-header"><div class="kpi-label">Vencidas</div><div class="kpi-icon">🔴</div></div>
+                            <div class="kpi-value" id="kpi-vencidas" style="color:#ef4444;">0</div>
+                            <div class="kpi-sub">requieren atención</div>
+                        </div>
                     </div>
-                    <h3 style="margin: 2rem 0 1rem;">Últimas Facturas</h3>
+
+                    <div class="dash-section-title">Últimos Documentos Ingresados</div>
                     <table class="table">
-                        <thead><tr><th>Folio</th><th>Proveedor</th><th>Fecha</th><th>Monto</th><th>Estado</th></tr></thead>
-                        <tbody id="dashboardTable"><tr><td colspan="5" style="text-align: center;">Sin facturas</td></tr></tbody>
+                        <thead><tr><th>Tipo Doc</th><th>Folio</th><th>Proveedor</th><th>Fecha</th><th>Monto</th><th>Estado</th></tr></thead>
+                        <tbody id="dashboardTable"><tr><td colspan="6" style="text-align:center; color:var(--gray); padding:1.5rem;">Sin documentos</td></tr></tbody>
                     </table>
                 </section>
 
@@ -645,20 +676,26 @@
             document.getElementById('kpi-vencidas').textContent   = cVencidas;
 
             // Dashboard: últimas 10 ordenadas por fecha desc
+            const tipoIcono = { factura:'🧾', guia:'🚚', nota_credito:'📝' };
+            const tipoLabel = { factura:'Factura', guia:'Guía Despacho', nota_credito:'Nota Crédito' };
             const dashHtml = [...facturas]
                 .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''))
                 .slice(0, 10)
                 .map(f => {
-                    const est = calcularEstado(f);
+                    const est  = calcularEstado(f);
+                    const tipo = (f.tipo_doc || f.tipo || 'factura').toLowerCase();
+                    const icono = tipoIcono[tipo] || '🧾';
+                    const tLabel = tipoLabel[tipo] || 'Factura';
                     return `<tr>
-                        <td>${f.folio}</td>
-                        <td>${f.proveedor || '-'}</td>
+                        <td><span style="white-space:nowrap;">${icono} ${tLabel}</span></td>
+                        <td style="font-weight:600;">${f.folio}</td>
+                        <td style="max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${f.proveedor || '-'}</td>
                         <td>${f.fecha}</td>
-                        <td>$${(f.monto || 0).toLocaleString('es-CL')}</td>
+                        <td style="font-weight:600;">$${(f.monto || 0).toLocaleString('es-CL')}</td>
                         <td><span class="state-badge ${est}">${labelEstado(est)}</span></td>
                     </tr>`;
                 }).join('');
-            document.getElementById('dashboardTable').innerHTML = dashHtml || '<tr><td colspan="5" style="text-align: center;">Sin facturas</td></tr>';
+            document.getElementById('dashboardTable').innerHTML = dashHtml || '<tr><td colspan="6" style="text-align:center; color:var(--gray); padding:1.5rem;">Sin documentos</td></tr>';
 
             // Tabla facturas: con filtro y ordenamiento
             renderTablaFacturas();
