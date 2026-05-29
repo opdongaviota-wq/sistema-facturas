@@ -239,13 +239,33 @@
                     <!-- Formulario de registro -->
                     <div class="white-card">
                         <h3 style="margin-bottom: 1rem; font-size: 1rem; color: var(--gray);">Registrar / Actualizar Pago</h3>
-                        <div class="grid-2">
-                            <div class="form-group">
-                                <label>Factura:</label>
-                                <select id="selectFactura">
-                                    <option value="">-- Selecciona --</option>
+                        <!-- Buscador de documentos -->
+                        <div class="form-group" style="margin-bottom:0.8rem;">
+                            <label>Buscar Documento:</label>
+                            <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.5rem;">
+                                <select id="filtroBuscadorTipo" onchange="filtrarDocumentosPago()" style="flex:1; min-width:130px;">
+                                    <option value="">— Tipo Doc —</option>
+                                    <option value="factura">Factura</option>
+                                    <option value="guia">Guía Despacho</option>
+                                    <option value="nota_credito">Nota Crédito</option>
+                                </select>
+                                <select id="filtroBuscadorEstado" onchange="filtrarDocumentosPago()" style="flex:1; min-width:130px;">
+                                    <option value="">— Status —</option>
+                                    <option value="pendiente">⏳ Pendiente</option>
+                                    <option value="por_vencer">🟠 Por Vencer</option>
+                                    <option value="vencida">🔴 Vencida</option>
+                                    <option value="pagada">✅ Pagada</option>
+                                </select>
+                                <input type="text" id="filtroBuscadorProveedor" placeholder="🔍 Nombre proveedor..." oninput="filtrarDocumentosPago()" style="flex:2; min-width:160px;">
+                            </div>
+                            <div id="resultadosBuscadorPago">
+                                <select id="selectFactura" size="1" style="width:100%;">
+                                    <option value="">— Selecciona un documento —</option>
                                 </select>
                             </div>
+                            <div id="infoBuscadorPago" style="font-size:0.82rem; color:var(--gray); margin-top:0.3rem;"></div>
+                        </div>
+                        <div style="margin-top:0.5rem;">
                             <div class="form-group">
                                 <label>Estado:</label>
                                 <select id="pagoEstado" onchange="togglePagoFields()">
@@ -643,18 +663,41 @@
             // Tabla facturas: con filtro y ordenamiento
             renderTablaFacturas();
 
-            // Select de pagos: solo facturas no pagadas, con indicador de urgencia
-            const select = document.getElementById('selectFactura');
-            select.innerHTML = '<option value="">-- Selecciona --</option>' +
-                facturas
-                    .filter(f => f.estado !== 'pagada')
-                    .map(f => {
-                        const est    = calcularEstado(f);
-                        const prefix = est === 'vencida' ? '🔴' : est === 'por_vencer' ? '🟠' : '⏳';
-                        return `<option value="${f.id}">${prefix} ${f.folio} — ${f.proveedor || ''}${f.rut ? ' · ' + f.rut : ''}</option>`;
-                    }).join('');
-
+            filtrarDocumentosPago();
             mostrarPendientesPagos();
+        }
+
+        function filtrarDocumentosPago() {
+            const tipo      = (document.getElementById('filtroBuscadorTipo')?.value || '').toLowerCase();
+            const estadoFil = (document.getElementById('filtroBuscadorEstado')?.value || '').toLowerCase();
+            const prov      = (document.getElementById('filtroBuscadorProveedor')?.value || '').toLowerCase().trim();
+
+            const resultado = facturas.filter(f => {
+                const tipoDoc = (f.tipo_doc || f.tipo || '').toLowerCase();
+                const est     = calcularEstado(f);
+                if (tipo && !tipoDoc.includes(tipo)) return false;
+                if (estadoFil && est !== estadoFil) return false;
+                if (prov && !(f.proveedor || '').toLowerCase().includes(prov)) return false;
+                return true;
+            });
+
+            const select = document.getElementById('selectFactura');
+            const infoEl = document.getElementById('infoBuscadorPago');
+            const hayFiltros = tipo || estadoFil || prov;
+
+            select.innerHTML = '<option value="">— Selecciona un documento —</option>' +
+                resultado.map(f => {
+                    const est      = calcularEstado(f);
+                    const prefix   = est === 'vencida' ? '🔴' : est === 'por_vencer' ? '🟠' : est === 'pagada' ? '✅' : '⏳';
+                    const tipoLabel = (f.tipo_doc || f.tipo || 'Factura');
+                    return `<option value="${f.id}">${prefix} [${tipoLabel}] ${f.folio} — ${f.proveedor || ''}${f.rut ? ' · ' + f.rut : ''} — $${(f.monto||0).toLocaleString('es-CL')}</option>`;
+                }).join('');
+
+            if (infoEl) {
+                infoEl.textContent = hayFiltros
+                    ? `${resultado.length} documento${resultado.length !== 1 ? 's' : ''} encontrado${resultado.length !== 1 ? 's' : ''}`
+                    : `${resultado.length} documentos en total`;
+            }
         }
 
         function getPeriodoDates(periodo) {
