@@ -7,6 +7,7 @@ import XLSX from 'xlsx';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 const { Pool } = pg;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -43,14 +44,24 @@ async function initDB() {
 
     await pool.query(`
         CREATE TABLE IF NOT EXISTS productos (
-            id         SERIAL PRIMARY KEY,
-            folio      TEXT,
-            nombre     TEXT,
-            cantidad   REAL,
-            valor      REAL,
-            created_at TIMESTAMPTZ DEFAULT NOW()
+            id              SERIAL PRIMARY KEY,
+            folio           TEXT,
+            nombre          TEXT,
+            cantidad        REAL,
+            valor           REAL,
+            proveedor       TEXT,
+            rut_proveedor   TEXT,
+            unidad          TEXT,
+            categoria       TEXT DEFAULT 'Sin categoría',
+            fecha_factura   TEXT,
+            created_at      TIMESTAMPTZ DEFAULT NOW()
         )
     `);
+    // Migrar columnas si la tabla ya existía sin ellas
+    const cols = ['proveedor','rut_proveedor','unidad','categoria','fecha_factura'];
+    for (const col of cols) {
+        await pool.query(`ALTER TABLE productos ADD COLUMN IF NOT EXISTS ${col} TEXT`).catch(()=>{});
+    }
 
     await pool.query(`
         CREATE TABLE IF NOT EXISTS cheques (
@@ -187,6 +198,126 @@ app.delete('/api/facturas/all', async (req, res) => {
 app.delete('/api/facturas/:id', async (req, res) => {
     try {
         await pool.query('DELETE FROM facturas WHERE id=$1', [req.params.id]);
+        res.json({ success: true });
+    } catch (err) {
+        res.json({ success: false, error: err.message });
+    }
+});
+
+// ========== PARSEAR PDF FACTURA ==========
+function categorizarProducto(nombre) {
+    const n = nombre.toLowerCase();
+    if (/ostra|salmón|salmon|merluza|mariscos?|calamar|camarón|camaron|congrio|atun|atún|pescado|pulpo|jaiba|centolla|erizo|cholga|almeja|navajuela|reineta|lenguado|trucha/.test(n)) return 'Pescados y Mariscos';
+    if (/cerveza|vino|bebida|jugo|agua|pisco|ron|vodka|whisky|champagne|espumante|refresco|licor|cóctel|coctel/.test(n)) return 'Líquidos';
+    if (/congelad|frozen/.test(n)) return 'Congelados';
+    if (/tomate|lechuga|cebolla|papa|zanahoria|manzana|palta|limón|limon|naranja|pera|uva|berr|fruta|verdura|vegetal|brocoli|espinaca|pepino|ajo|pimiento|coliflor/.test(n)) return 'Frutas y Verduras';
+    if (/cloro|detergente|esponja|escoba|trapo|limpiador|jabón|jabon|desinfect|papel higiénico|papel higienico|servilleta|toalla|basura|bolsa/.test(n)) return 'Aseo';
+    if (/servicio|mantención|manten|arriendo|instalación|instalacion|reparación|reparacion|asesoría|asesoria|consultora|mano de obra/.test(n)) return 'Servicios';
+    return 'Abarrotes';
+}
+
+function parsearTextoPDF(text) {
+    const lines = text.split(/\n/).map(l => l.trim()).filter(Boolean);
+    const fullText = lines.join(' ');
+
+    // Extraer proveedor: primera cadena de MAYÚSCULAS antes de doble espacio o giro/dirección
+    const provMatch = fullText.match(/^([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s\.\,]{4,80}?)\s{2,}/);
+    const proveedor = provMatch ? provMatch[1].trim() : fullText.substring(0, 60).trim();
+
+    // RUT proveedor
+    const rutMatch = fullText.match(/R\.?U\.?T\.?\s*[:\s]*(\d{7,8}-[\dkK])/i);
+    const rutProveedor = rutMatch ? rutMatch[1] : '';
+
+    // Folio
+    const folioMatch = fullText.match(/N[°º]\s*([\d\.]+)/i);
+    const folio = folioMatch ? folioMatch[1].replace(/\./g, '') : '';
+
+    // Fecha
+    const fechaMatch = fullText.match(/(\d{1,2})\s+de\s+(\w+)\s+de\s+(\d{4})/i);
+    let fecha = '';
+    if (fechaMatch) {
+        const meses = {enero:'01',febrero:'02',marzo:'03',abril:'04',mayo:'05',junio:'06',julio:'07',agosto:'08',septiembre:'09',octubre:'10',noviembre:'11',diciembre:'12'};
+        const mes = meses[fechaMatch[2].toLowerCase()] || '01';
+        fecha = `${fechaMatch[3]}-${mes}-${fechaMatch[1].padStart(2,'0')}`;
+    }
+
+    // Ítems: buscar el bloque entre "DETALLE" y "REFERENCIAS"/"Sub-Total"
+    const itemsRaw = [];
+    const detBloque = fullText.match(/CODIGO\s+CANTIDAD\s+DETALLE\s+UNIDAD\s+P\.\s*UNITARIO\s+TOTAL(.+?)(?:REFERENCIAS|Sub-Total)/is);
+    if (detBloque) {
+        const bloque = detBloque[1];
+        // Patrón: (cantidad) (descripción) (unidad) $ precio $ total
+        const lineaRegex = /([\d.,]+)\s+([A-ZÁÉÍÓÚÑ][^$]+?)\s+(UNID|KG|LT|UN|MT|CAJA|BOLSA|SACO|DOC|PAQ)\s+\$\s*([\d.,]+)\s+\$\s*([\d.,]+)/gi;
+        let m;
+        while ((m = lineaRegex.exec(bloque)) !== null) {
+            const cant = parseFloat(m[1].replace(/\./g,'').replace(',','.'));
+            const nombre = m[2].trim();
+            const unidad = m[3].trim();
+            const valorUnit = parseFloat(m[4].replace(/\./g,'').replace(',','.'));
+            const total = parseFloat(m[5].replace(/\./g,'').replace(',','.'));
+            itemsRaw.push({ nombre, cantidad: cant, unidad, valor_unitario: valorUnit, total, categoria: categorizarProducto(nombre) });
+        }
+        // Fallback: líneas sin unidad explícita
+        if (!itemsRaw.length) {
+            const fallback = /([\d.,]+)\s+([A-ZÁÉÍÓÚÑ][^$]+?)\s+\$\s*([\d.,]+)\s+\$\s*([\d.,]+)/gi;
+            let fm;
+            while ((fm = fallback.exec(bloque)) !== null) {
+                const cant = parseFloat(fm[1].replace(/\./g,'').replace(',','.'));
+                const nombre = fm[2].trim();
+                const valorUnit = parseFloat(fm[3].replace(/\./g,'').replace(',','.'));
+                itemsRaw.push({ nombre, cantidad: cant, unidad: 'UNID', valor_unitario: valorUnit, total: parseFloat(fm[4].replace(/\./g,'').replace(',','.')), categoria: categorizarProducto(nombre) });
+            }
+        }
+    }
+
+    // Monto total
+    const montoMatch = fullText.match(/Monto Total\s+\$\s*([\d.,]+)/i);
+    const montoTotal = montoMatch ? parseFloat(montoMatch[1].replace(/\./g,'').replace(',','.')) : 0;
+
+    return { proveedor, rut_proveedor: rutProveedor, folio, fecha, items: itemsRaw, monto_total: montoTotal };
+}
+
+app.post('/api/inventario/parsear-pdf', upload.single('pdf'), async (req, res) => {
+    try {
+        if (!req.file) return res.json({ success: false, error: 'No se recibió archivo PDF' });
+        const data = new Uint8Array(req.file.buffer);
+        const pdfDoc = await getDocument({ data }).promise;
+        let text = '';
+        for (let i = 1; i <= pdfDoc.numPages; i++) {
+            const page = await pdfDoc.getPage(i);
+            const content = await page.getTextContent();
+            text += content.items.map(x => x.str).join(' ') + '\n';
+        }
+        const resultado = parsearTextoPDF(text);
+        res.json({ success: true, ...resultado, texto_raw: text });
+    } catch (err) {
+        res.json({ success: false, error: err.message });
+    }
+});
+
+// GUARDAR ITEMS DE INVENTARIO DESDE PDF
+app.post('/api/inventario/guardar-items', async (req, res) => {
+    const { items } = req.body;
+    try {
+        let insertados = 0;
+        for (const item of items) {
+            await pool.query(
+                `INSERT INTO productos (folio, nombre, cantidad, valor, proveedor, rut_proveedor, unidad, categoria, fecha_factura)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+                [item.folio, item.nombre, item.cantidad, item.valor_unitario, item.proveedor, item.rut_proveedor, item.unidad, item.categoria, item.fecha_factura]
+            );
+            insertados++;
+        }
+        res.json({ success: true, insertados });
+    } catch (err) {
+        res.json({ success: false, error: err.message });
+    }
+});
+
+// DELETE PRODUCTO
+app.delete('/api/productos/:id', async (req, res) => {
+    try {
+        await pool.query('DELETE FROM productos WHERE id=$1', [req.params.id]);
         res.json({ success: true });
     } catch (err) {
         res.json({ success: false, error: err.message });
