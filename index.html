@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Facturas Cloud v4.5+</title>
+    <title>Facturas Cloud v4.5+ [PAGOS-AGRUPADOS]</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -56,6 +56,7 @@
         .msg { padding: 1rem; border-radius: 6px; margin-top: 1rem; }
         .msg.success { background: #d1fae5; color: #065f46; border-left: 4px solid var(--success); }
         .msg.error { background: #fee2e2; color: #991b1b; border-left: 4px solid #ef4444; }
+        .msg.info { background: #dbeafe; color: #1e40af; border-left: 4px solid var(--primary); }
         .spinner { display: inline-block; width: 20px; height: 20px; border: 3px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin-right: 0.5rem; }
         @keyframes spin { to { transform: rotate(360deg); } }
         .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
@@ -247,14 +248,85 @@
 
                 <section id="importar" class="section">
                     <h2>📥 Importar Excel</h2>
-                    <div class="white-card">
+
+                    <!-- Tabs de navegación -->
+                    <div style="display:flex; gap:1rem; margin-bottom:1.5rem; border-bottom:2px solid var(--border); padding-bottom:0;">
+                        <button id="tabImportacion" class="active" onclick="cambiarTabImportar('importacion')" style="padding:0.8rem 1.5rem; background:none; border:none; border-bottom:3px solid var(--primary); color:var(--primary); cursor:pointer; font-weight:700; font-size:1rem;">📁 Importación Masiva</button>
+                        <button id="tabCreacion" onclick="cambiarTabImportar('creacion')" style="padding:0.8rem 1.5rem; background:none; border:none; border-bottom:3px solid transparent; color:var(--gray); cursor:pointer; font-weight:700; font-size:1rem; transition:all 0.3s;">✏️ Creación Manual</button>
+                    </div>
+
+                    <!-- TAB 1: IMPORTACIÓN MASIVA -->
+                    <div id="contenidoImportacion" class="white-card">
                         <p style="margin-bottom: 1rem; color: var(--gray);"><strong>Archivo:</strong> Fact_Compras_Abril_26.xlsx</p>
-                        <p style="margin-bottom: 1rem; color: var(--gray);"><strong>Columnas:</strong> Folio | F. Emision | Nombre | Total</p>
+                        <p style="margin-bottom: 1.5rem; color: var(--gray);"><strong>Columnas:</strong> Folio | F. Emision | Nombre | Total</p>
+
+                        <!-- Tipo de Documento -->
+                        <div style="margin-bottom: 2rem; padding: 1rem; background: #f9fafb; border-radius: 8px; border-left: 4px solid var(--primary);">
+                            <label style="display:block; margin-bottom:0.8rem; font-weight:700; font-size:1rem;">Tipo de Documento a Importar:</label>
+                            <div style="display:grid; grid-template-columns: 1fr 1fr 2fr; gap:0.8rem;">
+                                <select id="tipoDocImportar" onchange="cambiarTipoDocImportar()" style="width:100%; padding:0.8rem; border:1px solid var(--border); border-radius:6px; font-size:0.95rem;">
+                                    <option value="factura">📄 Factura</option>
+                                    <option value="gasto">💸 Gasto</option>
+                                    <option value="otro">📋 Otro tipo de documento</option>
+                                </select>
+                                <input type="text" id="otroTipoDocImportar" placeholder="Ej: Nota de Crédito" style="width:100%; padding:0.8rem; border:1px solid var(--border); border-radius:6px; display:none; font-size:0.95rem;">
+                            </div>
+                        </div>
+
+                        <!-- Upload Area -->
+                        <p style="margin-bottom: 1rem; color: var(--gray); font-weight:600;">Selecciona tu archivo Excel:</p>
                         <label class="upload-area" ondrop="handleDropExcel(event)" ondragover="event.preventDefault()">
                             📁 Arrastra Excel aquí o haz click
                             <input type="file" class="file-input" accept=".xlsx,.xls,.csv" id="excelFile" onchange="importarExcel(event)">
                         </label>
                         <div id="excelMsg"></div>
+                    </div>
+
+                    <!-- TAB 2: CREACIÓN MANUAL -->
+                    <div id="contenidoCreacion" class="white-card" style="display:none;">
+                        <h3 style="margin-bottom:1rem; color:var(--primary);">Crear Documentos Manualmente</h3>
+
+                        <!-- Tipo de Documento -->
+                        <div style="margin-bottom: 1.5rem; padding: 1rem; background: #f9fafb; border-radius: 8px; border-left: 4px solid var(--success);">
+                            <label style="display:block; margin-bottom:0.5rem; font-weight:700;">Tipo de Documento:</label>
+                            <div style="display:grid; grid-template-columns: 1fr 2fr; gap:0.8rem;">
+                                <select id="tipoDocCreacion" onchange="cambiarTipoDocCreacion()" style="width:100%; padding:0.8rem; border:1px solid var(--border); border-radius:6px;">
+                                    <option value="factura">📄 Factura</option>
+                                    <option value="gasto">💸 Gasto</option>
+                                    <option value="otro">📋 Otro tipo de documento</option>
+                                </select>
+                                <input type="text" id="otroTipoDocCreacion" placeholder="Ej: Nota de Crédito" style="width:100%; padding:0.8rem; border:1px solid var(--border); border-radius:6px; display:none;">
+                            </div>
+                        </div>
+
+                        <!-- Tabla de ingreso manual -->
+                        <div style="margin-bottom:1.5rem;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+                                <label style="font-weight:700; font-size:0.95rem;">Documentos a Crear:</label>
+                                <button onclick="agregarFilaManual()" class="btn-success">+ Agregar Fila</button>
+                            </div>
+                            <table class="table" id="tablaCreacionManual">
+                                <thead>
+                                    <tr>
+                                        <th>Folio</th>
+                                        <th>Fecha Emisión</th>
+                                        <th>Proveedor</th>
+                                        <th>Monto</th>
+                                        <th>Acción</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tbodyCreacionManual">
+                                    <!-- Se llena dinámicamente -->
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Botones de acción -->
+                        <div style="display:flex; gap:0.8rem; margin-top:1.5rem;">
+                            <button onclick="guardarDocumentosManual()" class="btn btn-primary" style="width:auto; padding:0.8rem 2rem;">💾 Guardar Documentos</button>
+                            <button onclick="limpiarFormularioManual()" class="btn" style="width:auto; padding:0.8rem 1.5rem; background:#f3f4f6; color:var(--gray);">Limpiar</button>
+                        </div>
+                        <div id="mensajeCreacion"></div>
                     </div>
                 </section>
 
@@ -331,45 +403,52 @@
 
                     <!-- Formulario de registro -->
                     <div class="white-card">
-                        <h3 style="margin-bottom: 1rem; font-size: 1rem; color: var(--gray);">Registrar / Actualizar Pago</h3>
-                        <!-- Buscador de documentos -->
+                        <h3 style="margin-bottom: 1rem; font-size: 1rem; color: var(--gray);">Registrar Pago (individual o agrupado)</h3>
+                        <!-- Buscador y selección múltiple de documentos -->
                         <div class="form-group" style="margin-bottom:0.8rem;">
-                            <label>Buscar Documento:</label>
-                            <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.5rem;">
-                                <select id="filtroBuscadorTipo" onchange="filtrarDocumentosPago()" style="flex:1; min-width:130px;">
+                            <label style="font-weight:700;">Seleccionar Documentos a Pagar:</label>
+                            <div style="display:grid; grid-template-columns: 1fr 1fr 2fr; gap:0.5rem; margin-bottom:0.8rem;">
+                                <select id="filtroBuscadorTipo" onchange="filtrarDocumentosPago()" style="width:100%;">
                                     <option value="">— Tipo Doc —</option>
                                     <option value="factura">Factura</option>
                                     <option value="guia">Guía Despacho</option>
                                     <option value="nota_credito">Nota Crédito</option>
                                 </select>
-                                <select id="filtroBuscadorEstado" onchange="filtrarDocumentosPago()" style="flex:1; min-width:130px;">
-                                    <option value="">— Status —</option>
+                                <select id="filtroBuscadorEstado" onchange="filtrarDocumentosPago()" style="width:100%;">
                                     <option value="pendiente">⏳ Pendiente</option>
+                                    <option value="">— Todos Status —</option>
                                     <option value="por_vencer">🟠 Por Vencer</option>
                                     <option value="vencida">🔴 Vencida</option>
                                     <option value="pagada">✅ Pagada</option>
                                 </select>
-                                <input type="text" id="filtroBuscadorProveedor" placeholder="🔍 Nombre proveedor..." oninput="filtrarDocumentosPago()" style="flex:2; min-width:160px;">
+                                <input type="text" id="filtroBuscadorProveedor" placeholder="🔍 Nombre proveedor..." oninput="filtrarDocumentosPago()" style="width:100%;">
                             </div>
-                            <div id="resultadosBuscadorPago">
-                                <select id="selectFactura" size="1" style="width:100%;">
-                                    <option value="">— Selecciona un documento —</option>
-                                </select>
-                            </div>
-                            <div id="infoBuscadorPago" style="font-size:0.82rem; color:var(--gray); margin-top:0.3rem;"></div>
-                        </div>
-                        <div style="margin-top:0.5rem;">
-                            <div class="form-group">
-                                <label>Estado:</label>
-                                <select id="pagoEstado" onchange="togglePagoFields()">
-                                    <option value="pagada">✅ Pagada</option>
-                                    <option value="pendiente">⏳ Pendiente</option>
-                                </select>
+                            <!-- Tabla con checkboxes - IGUAL QUE MÓDULO FACTURAS -->
+                            <table id="resultadosBuscadorPago" class="table" style="margin-top:0.8rem; margin-bottom:0;">
+                                <thead>
+                                    <tr>
+                                        <th style="width:50px;"></th>
+                                        <th>Tipo Doc</th>
+                                        <th>Folio</th>
+                                        <th>Proveedor</th>
+                                        <th>RUT</th>
+                                        <th>Fecha</th>
+                                        <th>Monto</th>
+                                        <th>Estado</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="resultadosBuscadorPagoBody">
+                                    <tr><td colspan="8" style="text-align:center; color:var(--gray); padding:2rem;">Cargando documentos...</td></tr>
+                                </tbody>
+                            </table>
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:0.6rem; flex-wrap:wrap; gap:0.4rem;">
+                                <div id="infoBuscadorPago" style="font-size:0.82rem; color:var(--gray);"></div>
+                                <div id="resumenSeleccion" style="font-size:0.85rem; font-weight:700; color:var(--primary);"></div>
                             </div>
                         </div>
 
-                        <!-- Campos condicionales: solo cuando estado = pagada -->
-                        <div id="pagoFields" class="pago-fields">
+                        <!-- Campos de pago -->
+                        <div id="pagoFields" class="pago-fields" style="display:block;">
                             <div class="grid-2">
                                 <div class="form-group">
                                     <label>Medio de Pago:</label>
@@ -387,8 +466,9 @@
                             <!-- Sección de cheques (solo si medio = cheque) -->
                             <div id="chequeSection" style="display:none;">
                                 <div class="cheque-section">
-                                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.8rem;">
+                                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.8rem; flex-wrap:wrap; gap:0.5rem;">
                                         <strong style="font-size:0.9rem;">Detalle de Cheques</strong>
+                                        <div id="totalCheques" style="font-size:0.85rem; color:var(--gray);"></div>
                                         <button type="button" class="btn-success" onclick="agregarCheque()">+ Agregar Cheque</button>
                                     </div>
                                     <div id="chequesList"></div>
@@ -397,7 +477,7 @@
                         </div>
 
                         <div style="display:flex; gap:0.5rem; margin-top:1rem;">
-                            <button class="btn btn-primary" onclick="guardarPago()" style="width:auto; padding: 0.8rem 2rem;">Guardar Pago</button>
+                            <button class="btn btn-primary" onclick="guardarPago()" style="width:auto; padding: 0.8rem 2rem;">💾 Guardar Pago</button>
                             <button class="btn" onclick="limpiarFormPago()" style="width:auto; padding: 0.8rem 1.5rem; background:#f3f4f6; color:var(--gray);">Limpiar</button>
                         </div>
                         <div id="pagoMsg"></div>
@@ -431,12 +511,12 @@
                     <table class="table">
                         <thead>
                             <tr>
-                                <th>Folio</th>
-                                <th>Proveedor</th>
-                                <th>Monto Factura</th>
+                                <th>Folio / Grupo</th>
+                                <th>Proveedor(es)</th>
+                                <th>Monto Total</th>
                                 <th>Medio de Pago</th>
                                 <th>Fecha de Pago</th>
-                                <th>Cheques</th>
+                                <th>Detalle</th>
                             </tr>
                         </thead>
                         <tbody id="pagosTable">
@@ -692,7 +772,11 @@
             document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
             document.getElementById(id).classList.add('active');
             event.target.classList.add('active');
-            if (id === 'pagos') cargarPagos();
+            if (id === 'pagos') {
+                cargarPagos();
+                filtrarDocumentosPago();
+                mostrarPendientesPagos();
+            }
             if (id === 'configuracion') cargarUsuarios();
             if (id === 'reportes')      renderReportes();
         }
@@ -767,6 +851,9 @@
             mostrarPendientesPagos();
         }
 
+        // Rastrear facturas seleccionadas para pago agrupado
+        let facturasSeleccionadas = [];
+
         function filtrarDocumentosPago() {
             const tipo      = (document.getElementById('filtroBuscadorTipo')?.value || '').toLowerCase();
             const estadoFil = (document.getElementById('filtroBuscadorEstado')?.value || '').toLowerCase();
@@ -781,23 +868,65 @@
                 return true;
             });
 
-            const select = document.getElementById('selectFactura');
+            const container = document.getElementById('resultadosBuscadorPago');
             const infoEl = document.getElementById('infoBuscadorPago');
             const hayFiltros = tipo || estadoFil || prov;
 
-            select.innerHTML = '<option value="">— Selecciona un documento —</option>' +
-                resultado.map(f => {
+            // Crear tabla con checkboxes - IGUAL AL MÓDULO FACTURAS
+            const tbody = document.getElementById('resultadosBuscadorPagoBody');
+            if (resultado.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:var(--gray); padding:2rem;">No hay documentos disponibles</td></tr>';
+            } else {
+                tbody.innerHTML = resultado.map(f => {
                     const est      = calcularEstado(f);
-                    const prefix   = est === 'vencida' ? '🔴' : est === 'por_vencer' ? '🟠' : est === 'pagada' ? '✅' : '⏳';
+                    const estLabel = est === 'vencida' ? '🔴 Vencida' : est === 'por_vencer' ? '🟠 Por Vencer' : est === 'pagada' ? '✅ Pagada' : '⏳ Pendiente';
                     const tipoLabel = (f.tipo_doc || f.tipo || 'Factura');
-                    return `<option value="${f.id}">${prefix} [${tipoLabel}] ${f.folio} — ${f.proveedor || ''}${f.rut ? ' · ' + f.rut : ''} — $${(f.monto||0).toLocaleString('es-CL')}</option>`;
+                    const checked  = facturasSeleccionadas.includes(f.id) ? 'checked' : '';
+                    return `<tr>
+                        <td style="text-align:center;">
+                            <input type="checkbox" id="chk_${f.id}" ${checked} onchange="toggleFacturaSeleccion(${f.id})" style="cursor:pointer;">
+                        </td>
+                        <td style="font-size:0.82rem; color:var(--gray);">${tipoLabel}</td>
+                        <td><strong>${f.folio}</strong></td>
+                        <td>${f.proveedor || '-'}</td>
+                        <td style="font-size:0.82rem; color:var(--gray);">${f.rut || '-'}</td>
+                        <td>${f.fecha || '-'}</td>
+                        <td style="font-weight:700; color:var(--primary);">$${(f.monto || 0).toLocaleString('es-CL')}</td>
+                        <td><span class="state-badge ${est}">${estLabel}</span></td>
+                    </tr>`;
                 }).join('');
+            }
 
             if (infoEl) {
                 infoEl.textContent = hayFiltros
                     ? `${resultado.length} documento${resultado.length !== 1 ? 's' : ''} encontrado${resultado.length !== 1 ? 's' : ''}`
                     : `${resultado.length} documentos en total`;
             }
+            actualizarResumenSeleccion();
+        }
+
+        function toggleFacturaSeleccion(id) {
+            const chk = document.getElementById(`chk_${id}`);
+            if (chk.checked) {
+                if (!facturasSeleccionadas.includes(id)) facturasSeleccionadas.push(id);
+            } else {
+                facturasSeleccionadas = facturasSeleccionadas.filter(fid => fid !== id);
+            }
+            actualizarResumenSeleccion();
+        }
+
+        function actualizarResumenSeleccion() {
+            const resEl = document.getElementById('resumenSeleccion');
+            if (!resEl) return;
+            if (!facturasSeleccionadas.length) {
+                resEl.textContent = '';
+                return;
+            }
+            const total = facturasSeleccionadas.reduce((s, id) => {
+                const f = facturas.find(x => x.id === id);
+                return s + (f ? f.monto || 0 : 0);
+            }, 0);
+            resEl.textContent = `✅ ${facturasSeleccionadas.length} factura${facturasSeleccionadas.length !== 1 ? 's' : ''} seleccionada${facturasSeleccionadas.length !== 1 ? 's' : ''} · Total: $${total.toLocaleString('es-CL')}`;
         }
 
         function getPeriodoDates(periodo) {
@@ -932,14 +1061,39 @@
             importarExcel({ target: { files: e.dataTransfer.files } });
         }
 
+        function cambiarTipoDocCreacion() {
+            const tipo = document.getElementById('tipoDocCreacion').value;
+            const otroInput = document.getElementById('otroTipoDocCreacion');
+            otroInput.style.display = tipo === 'otro' ? 'block' : 'none';
+            if (tipo !== 'otro') otroInput.value = '';
+        }
+
+        function cambiarTipoDocImportar() {
+            const tipo = document.getElementById('tipoDocImportar').value;
+            const otroInput = document.getElementById('otroTipoDocImportar');
+            otroInput.style.display = tipo === 'otro' ? 'block' : 'none';
+            if (tipo !== 'otro') otroInput.value = '';
+        }
+
         async function importarExcel(event) {
             const file = event.target.files[0];
             if (!file) return;
+
+            // Obtener tipo de documento
+            const tipo = document.getElementById('tipoDocImportar').value;
+            const otroTipo = document.getElementById('otroTipoDocImportar').value;
+
+            if (tipo === 'otro' && !otroTipo) {
+                alert('Por favor, especifica el nombre del tipo de documento');
+                return;
+            }
 
             document.getElementById('excelMsg').innerHTML = '<div style="padding: 1rem; text-align: center;"><span class="spinner"></span>Procesando Excel...</div>';
 
             const formData = new FormData();
             formData.append('file', file);
+            formData.append('tipo_doc', tipo === 'otro' ? otroTipo : tipo);
+            formData.append('doc_category', tipo);
 
             try {
                 const res = await fetch(`${API}/upload/excel`, {
@@ -950,11 +1104,129 @@
                 if (data.success) {
                     document.getElementById('excelMsg').innerHTML = `<div class="msg success">✅ ${data.message}</div>`;
                     await cargarFacturas();
+                    // Resetear formulario
+                    document.getElementById('excelFile').value = '';
+                    document.getElementById('tipoDocImportar').value = 'factura';
+                    cambiarTipoDocImportar();
                 } else {
                     document.getElementById('excelMsg').innerHTML = `<div class="msg error">❌ Error: ${data.error}</div>`;
                 }
             } catch (error) {
                 document.getElementById('excelMsg').innerHTML = '<div class="msg error">❌ Error al procesar</div>';
+            }
+        }
+
+        // ===== TABS - IMPORTAR EXCEL =====
+        function cambiarTabImportar(tab) {
+            // Cambiar botones activos
+            document.getElementById('tabImportacion').classList.toggle('active', tab === 'importacion');
+            document.getElementById('tabCreacion').classList.toggle('active', tab === 'creacion');
+
+            // Cambiar color de botones
+            document.getElementById('tabImportacion').style.borderBottomColor = tab === 'importacion' ? 'var(--primary)' : 'transparent';
+            document.getElementById('tabImportacion').style.color = tab === 'importacion' ? 'var(--primary)' : 'var(--gray)';
+
+            document.getElementById('tabCreacion').style.borderBottomColor = tab === 'creacion' ? 'var(--primary)' : 'transparent';
+            document.getElementById('tabCreacion').style.color = tab === 'creacion' ? 'var(--primary)' : 'var(--gray)';
+
+            // Mostrar/ocultar contenidos
+            document.getElementById('contenidoImportacion').style.display = tab === 'importacion' ? 'block' : 'none';
+            document.getElementById('contenidoCreacion').style.display = tab === 'creacion' ? 'block' : 'none';
+        }
+
+        // ===== CREACIÓN MANUAL DE DOCUMENTOS =====
+        let documentosACrear = [];
+
+        function agregarFilaManual() {
+            documentosACrear.push({
+                folio: '',
+                fecha: '',
+                proveedor: '',
+                monto: ''
+            });
+            actualizarTablaCreacion();
+        }
+
+        function actualizarTablaCreacion() {
+            const tbody = document.getElementById('tbodyCreacionManual');
+            tbody.innerHTML = documentosACrear.map((doc, idx) => `
+                <tr>
+                    <td><input type="text" value="${doc.folio}" placeholder="INV-001" style="width:100%; padding:0.4rem; border:1px solid var(--border); border-radius:4px;" onchange="documentosACrear[${idx}].folio=this.value"></td>
+                    <td><input type="date" value="${doc.fecha}" style="width:100%; padding:0.4rem; border:1px solid var(--border); border-radius:4px;" onchange="documentosACrear[${idx}].fecha=this.value"></td>
+                    <td><input type="text" value="${doc.proveedor}" placeholder="Nombre Proveedor" style="width:100%; padding:0.4rem; border:1px solid var(--border); border-radius:4px;" onchange="documentosACrear[${idx}].proveedor=this.value"></td>
+                    <td><input type="number" value="${doc.monto}" placeholder="1000000" style="width:100%; padding:0.4rem; border:1px solid var(--border); border-radius:4px;" onchange="documentosACrear[${idx}].monto=this.value"></td>
+                    <td><button onclick="documentosACrear.splice(${idx},1); actualizarTablaCreacion();" class="btn-danger" style="padding:0.4rem 0.8rem; font-size:0.85rem;">✕ Eliminar</button></td>
+                </tr>
+            `).join('');
+        }
+
+        function limpiarFormularioManual() {
+            documentosACrear = [];
+            actualizarTablaCreacion();
+            document.getElementById('tipoDocCreacion').value = 'factura';
+            document.getElementById('otroTipoDocCreacion').style.display = 'none';
+            document.getElementById('otroTipoDocCreacion').value = '';
+            document.getElementById('mensajeCreacion').innerHTML = '';
+        }
+
+        async function guardarDocumentosManual() {
+            // Validar que haya documentos
+            if (documentosACrear.length === 0) {
+                document.getElementById('mensajeCreacion').innerHTML = '<div class="msg error">❌ Debes agregar al menos un documento</div>';
+                return;
+            }
+
+            // Validar que todos los campos estén completos
+            for (let i = 0; i < documentosACrear.length; i++) {
+                const doc = documentosACrear[i];
+                if (!doc.folio || !doc.fecha || !doc.proveedor || !doc.monto) {
+                    document.getElementById('mensajeCreacion').innerHTML = `<div class="msg error">❌ Fila ${i+1}: Completa todos los campos</div>`;
+                    return;
+                }
+            }
+
+            // Obtener tipo de documento
+            const tipoDoc = document.getElementById('tipoDocCreacion').value;
+            const tipoDocCustom = document.getElementById('otroTipoDocCreacion').value;
+            const tipo_doc = tipoDoc === 'otro' ? tipoDocCustom : tipoDoc;
+
+            // Preparar datos
+            const datos = {
+                documentos: documentosACrear.map(doc => ({
+                    folio: doc.folio,
+                    fecha_factura: doc.fecha,
+                    nombre_proveedor: doc.proveedor,
+                    monto: parseFloat(doc.monto),
+                    tipo_doc: tipo_doc
+                }))
+            };
+
+            try {
+                document.getElementById('mensajeCreacion').innerHTML = '<div class="msg info">⏳ Guardando documentos...</div>';
+
+                const res = await fetch(`${API}/documentos/crear-manual`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(datos)
+                });
+
+                const data = await res.json();
+
+                if (data.success) {
+                    document.getElementById('mensajeCreacion').innerHTML = `<div class="msg success">✅ ${data.documentos_creados} documento${data.documentos_creados!==1?'s':''} creado${data.documentos_creados!==1?'s':''} correctamente</div>`;
+
+                    // Limpiar después de 2 segundos
+                    setTimeout(() => {
+                        limpiarFormularioManual();
+                        // Recargar facturas para mostrar los nuevos documentos
+                        cargarFacturas();
+                    }, 2000);
+                } else {
+                    document.getElementById('mensajeCreacion').innerHTML = `<div class="msg error">❌ Error: ${data.error}</div>`;
+                }
+            } catch (error) {
+                document.getElementById('mensajeCreacion').innerHTML = '<div class="msg error">❌ Error al guardar documentos</div>';
+                console.error(error);
             }
         }
 
@@ -1106,12 +1378,6 @@
         }
 
         // ===== PAGOS: campos condicionales =====
-        function togglePagoFields() {
-            const estado = document.getElementById('pagoEstado').value;
-            document.getElementById('pagoFields').style.display = estado === 'pagada' ? 'block' : 'none';
-            if (estado === 'pagada') toggleChequeFields();
-        }
-
         function toggleChequeFields() {
             const medio = document.getElementById('medioPago').value;
             const sec = document.getElementById('chequeSection');
@@ -1119,6 +1385,7 @@
             if (medio === 'cheque' && document.getElementById('chequesList').children.length === 0) {
                 agregarCheque();
             }
+            actualizarTotalCheques();
         }
 
         let chequeIdx = 0;
@@ -1130,16 +1397,18 @@
             row.id = `chequeRow_${i}`;
             row.innerHTML = `
                 <div><label>N° Cheque</label><input type="text" id="cn_${i}" placeholder="Ej: 00123456"></div>
-                <div><label>Fecha Cheque</label><input type="date" id="cf_${i}"></div>
-                <div><label>Monto Cheque ($)</label><input type="number" id="cm_${i}" placeholder="0" min="0"></div>
+                <div><label>Fecha Cheque</label><input type="date" id="cf_${i}" oninput="actualizarTotalCheques()"></div>
+                <div><label>Monto Cheque ($)</label><input type="number" id="cm_${i}" placeholder="0" min="0" oninput="actualizarTotalCheques()"></div>
                 <div style="display:flex;align-items:flex-end;"><button type="button" class="btn-danger" onclick="eliminarCheque(${i})">✕</button></div>
             `;
             document.getElementById('chequesList').appendChild(row);
+            actualizarTotalCheques();
         }
 
         function eliminarCheque(i) {
             const el = document.getElementById(`chequeRow_${i}`);
             if (el) el.remove();
+            actualizarTotalCheques();
         }
 
         function obtenerCheques() {
@@ -1159,56 +1428,72 @@
             return cheques;
         }
 
+        function actualizarTotalCheques() {
+            const cheques = obtenerCheques();
+            const totalCheques = cheques.reduce((s, c) => s + (c.monto_cheque || 0), 0);
+            const totalSeleccionado = facturasSeleccionadas.reduce((s, id) => {
+                const f = facturas.find(x => x.id === id);
+                return s + (f ? f.monto || 0 : 0);
+            }, 0);
+            const totalEl = document.getElementById('totalCheques');
+            if (!totalEl) return;
+            const diff = totalSeleccionado - totalCheques;
+            let color = 'var(--gray)';
+            if (diff > 0) color = '#f97316'; // Naranja si falta
+            else if (diff < 0) color = '#10b981'; // Verde si sobra
+            else if (totalCheques > 0) color = '#2563eb'; // Azul si es exacto
+
+            totalEl.innerHTML = `<span style="color:${color}; font-weight:700;">Fact: $${totalSeleccionado.toLocaleString('es-CL')} | Cheques: $${totalCheques.toLocaleString('es-CL')} ${diff !== 0 ? (diff > 0 ? `Falta: $${diff.toLocaleString('es-CL')}` : `Sobra: $${Math.abs(diff).toLocaleString('es-CL')}`) : '✓'}</span>`;
+        }
+
         function limpiarFormPago() {
-            document.getElementById('selectFactura').value = '';
-            document.getElementById('pagoEstado').value = 'pagada';
+            facturasSeleccionadas = [];
+            document.querySelectorAll('[id^="chk_"]').forEach(chk => chk.checked = false);
             document.getElementById('medioPago').value = 'transferencia';
             document.getElementById('fechaPago').value = '';
             document.getElementById('chequesList').innerHTML = '';
             document.getElementById('chequeSection').style.display = 'none';
-            document.getElementById('pagoFields').style.display = 'block';
             document.getElementById('pagoMsg').innerHTML = '';
+            document.getElementById('totalCheques').innerHTML = '';
+            document.getElementById('resumenSeleccion').textContent = '';
+            filtrarDocumentosPago();
         }
 
         async function guardarPago() {
-            const id = document.getElementById('selectFactura').value;
-            const estado = document.getElementById('pagoEstado').value;
+            if (!facturasSeleccionadas.length) { alert('Selecciona al menos una factura'); return; }
+            const medioPago = document.getElementById('medioPago').value;
+            const fechaPago = document.getElementById('fechaPago').value;
+            if (!fechaPago) { alert('Ingresa la fecha de pago'); return; }
 
-            if (!id) { alert('Selecciona una factura'); return; }
+            const body = {
+                factura_ids: facturasSeleccionadas,
+                medio_pago: medioPago,
+                fecha_pago: fechaPago
+            };
 
-            const body = { estado };
-
-            if (estado === 'pagada') {
-                body.medio_pago = document.getElementById('medioPago').value;
-                body.fecha_pago = document.getElementById('fechaPago').value;
-                if (!body.fecha_pago) { alert('Ingresa la fecha de pago'); return; }
+            if (medioPago === 'cheque') {
+                const cheques = obtenerCheques();
+                if (!cheques.length) { alert('Agrega al menos un cheque'); return; }
+                body.cheques = cheques;
             }
 
             try {
-                const res = await fetch(`${API}/facturas/${id}`, {
-                    method: 'PUT',
+                const res = await fetch(`${API}/pagos/grupo`, {
+                    method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(body)
                 });
                 const data = await res.json();
                 if (!data.success) { alert('Error: ' + data.error); return; }
 
-                if (estado === 'pagada' && body.medio_pago === 'cheque') {
-                    const cheques = obtenerCheques();
-                    await fetch(`${API}/cheques/${id}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ cheques })
-                    });
-                }
-
-                document.getElementById('pagoMsg').innerHTML = '<div class="msg success">✅ Pago registrado correctamente</div>';
+                document.getElementById('pagoMsg').innerHTML = '<div class="msg success">✅ Pago agrupado registrado correctamente (Grupo: ' + data.pago_grupo_id + ')</div>';
                 setTimeout(() => {
                     cargarFacturas();
                     cargarPagos();
                     limpiarFormPago();
                 }, 1500);
             } catch (error) {
+                console.error(error);
                 alert('Error guardando pago');
             }
         }
@@ -1239,22 +1524,34 @@
             }
             tbody.innerHTML = pagos.map(p => {
                 const medioLabel = p.medio_pago === 'cheque' ? '📄 Cheque' : p.medio_pago === 'transferencia' ? '🏦 Transferencia' : '-';
-                let chequesHtml = '-';
-                if (p.medio_pago === 'cheque' && p.cheques && p.cheques.length) {
-                    chequesHtml = p.cheques.map(c =>
+                let detailHtml = '-';
+
+                // Si es un grupo, mostrar todas las facturas
+                if (p.es_grupo && p.facturas && p.facturas.length) {
+                    detailHtml = `<div style="font-size:0.8rem;">
+                        <div style="font-weight:700; margin-bottom:0.4rem; color:var(--primary);">📦 Grupo (${p.cantidad_facturas} factura${p.cantidad_facturas !== 1 ? 's' : ''})</div>
+                        ${p.facturas.map(f => `<div style="padding:0.2rem 0; border-bottom:1px solid #f0f0f0;">${f.folio} — ${f.proveedor || ''} — $${(f.monto || 0).toLocaleString('es-CL')}</div>`).join('')}
+                        ${p.cheques && p.cheques.length ? `<div style="margin-top:0.4rem; border-top:1px solid #d1d5db; padding-top:0.4rem; font-weight:700;">Cheques:</div>` +
+                            p.cheques.map(c => `<div style="padding:0.2rem 0;">N°${c.numero_cheque || '-'} · ${c.fecha_cheque || ''} · $${(c.monto_cheque || 0).toLocaleString('es-CL')}</div>`).join('') : ''}
+                    </div>`;
+                } else if (p.medio_pago === 'cheque' && p.cheques && p.cheques.length) {
+                    // Pago individual con cheques
+                    detailHtml = p.cheques.map(c =>
                         `<div style="font-size:0.8rem; padding:0.15rem 0; border-bottom:1px solid #f0f0f0;">` +
                         `${c.numero_cheque ? '<b>N°' + c.numero_cheque + '</b> · ' : ''}` +
                         `${c.fecha_cheque || ''} · ` +
                         `<b>$${(c.monto_cheque || 0).toLocaleString('es-CL')}</b></div>`
                     ).join('');
                 }
+
+                const folioLabel = p.es_grupo ? `🔗 ${p.folio}` : p.folio;
                 return `<tr>
-                    <td><strong>${p.folio}</strong></td>
+                    <td><strong>${folioLabel}</strong></td>
                     <td>${p.proveedor || '-'}</td>
-                    <td>$${(p.monto || 0).toLocaleString('es-CL')}</td>
+                    <td style="font-weight:700; color:var(--primary);">$${(p.monto || 0).toLocaleString('es-CL')}</td>
                     <td><span class="state-badge ${p.medio_pago || ''}">${medioLabel}</span></td>
                     <td>${p.fecha_pago || '-'}</td>
-                    <td>${chequesHtml}</td>
+                    <td>${detailHtml}</td>
                 </tr>`;
             }).join('');
         }

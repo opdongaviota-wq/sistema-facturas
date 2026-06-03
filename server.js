@@ -92,6 +92,8 @@ async function initDB() {
         `ALTER TABLE facturas ADD COLUMN IF NOT EXISTS fecha_pago TEXT`,
         `ALTER TABLE facturas ADD COLUMN IF NOT EXISTS rut TEXT`,
         `ALTER TABLE facturas ADD COLUMN IF NOT EXISTS tipo_doc TEXT`,
+        `ALTER TABLE facturas ADD COLUMN IF NOT EXISTS pago_grupo_id TEXT`,
+        `ALTER TABLE cheques ADD COLUMN IF NOT EXISTS pago_grupo_id TEXT`,
     ];
     for (const sql of migraciones) {
         await pool.query(sql).catch(() => {});
@@ -348,7 +350,37 @@ app.post('/api/productos', async (req, res) => {
     }
 });
 
-// GET PAGOS con filtros (facturas pagadas + cheques embebidos)
+// POST PAGO AGRUPADO (múltiples facturas + múltiples cheques)
+app.post('/api/pagos/grupo', async (req, res) => {
+    const { factura_ids, medio_pago, fecha_pago, cheques } = req.body;
+    if (!factura_ids || !factura_ids.length) return res.json({ success: false, error: 'Debes seleccionar al menos una factura' });
+    if (!fecha_pago) return res.json({ success: false, error: 'Fecha de pago requerida' });
+
+    const grupoId = `G-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+    try {
+        for (const id of factura_ids) {
+            await pool.query(
+                'UPDATE facturas SET estado=$1, medio_pago=$2, fecha_pago=$3, pago_grupo_id=$4 WHERE id=$5',
+                ['pagada', medio_pago || 'transferencia', fecha_pago, grupoId, id]
+            );
+        }
+        if (medio_pago === 'cheque' && cheques && cheques.length) {
+            for (const c of cheques) {
+                // El cheque se asocia al grupo y al primer factura_id para compatibilidad
+                await pool.query(
+                    'INSERT INTO cheques (factura_id, pago_grupo_id, numero_cheque, fecha_cheque, monto_cheque) VALUES ($1,$2,$3,$4,$5)',
+                    [factura_ids[0], grupoId, c.numero_cheque || '', c.fecha_cheque || '', c.monto_cheque || 0]
+                );
+            }
+        }
+        res.json({ success: true, pago_grupo_id: grupoId });
+    } catch (err) {
+        res.json({ success: false, error: err.message });
+    }
+});
+
+// GET PAGOS con filtros (facturas pagadas + cheques embebidos, agrupados por pago_grupo_id)
 app.get('/api/pagos', async (req, res) => {
     const { medio_pago, fecha_desde, fecha_hasta } = req.query;
     let query = "SELECT * FROM facturas WHERE estado='pagada'";
@@ -368,15 +400,57 @@ app.get('/api/pagos', async (req, res) => {
         const ids = facturas.map(f => f.id);
         const placeholders = ids.map((_, idx) => `$${idx + 1}`).join(',');
         const chequesResult = await pool.query(
-            `SELECT * FROM cheques WHERE factura_id IN (${placeholders}) ORDER BY created_at`,
-            ids
+            `SELECT * FROM cheques WHERE factura_id IN (${placeholders}) OR pago_grupo_id IN (
+                SELECT DISTINCT pago_grupo_id FROM facturas WHERE id IN (${placeholders}) AND pago_grupo_id IS NOT NULL
+            ) ORDER BY created_at`,
+            [...ids, ...ids]
         );
         const cheques = chequesResult.rows;
 
-        const pagos = facturas.map(f => ({
-            ...f,
-            cheques: cheques.filter(c => c.factura_id === f.id)
-        }));
+        // Agrupar facturas con mismo pago_grupo_id
+        const grupos = {};
+        const sinGrupo = [];
+        for (const f of facturas) {
+            if (f.pago_grupo_id) {
+                if (!grupos[f.pago_grupo_id]) grupos[f.pago_grupo_id] = [];
+                grupos[f.pago_grupo_id].push(f);
+            } else {
+                sinGrupo.push(f);
+            }
+        }
+
+        const pagos = [];
+
+        // Pagos agrupados: un registro por grupo
+        for (const [grupoId, grpFacturas] of Object.entries(grupos)) {
+            const primera = grpFacturas[0];
+            const chequesGrupo = cheques.filter(c => c.pago_grupo_id === grupoId);
+            pagos.push({
+                pago_grupo_id: grupoId,
+                facturas: grpFacturas.map(f => ({ id: f.id, folio: f.folio, proveedor: f.proveedor, monto: f.monto, tipo_doc: f.tipo_doc })),
+                folio: grpFacturas.map(f => f.folio).join(', '),
+                proveedor: [...new Set(grpFacturas.map(f => f.proveedor))].join(', '),
+                monto: grpFacturas.reduce((s, f) => s + (f.monto || 0), 0),
+                medio_pago: primera.medio_pago,
+                fecha_pago: primera.fecha_pago,
+                cheques: chequesGrupo,
+                es_grupo: true,
+                cantidad_facturas: grpFacturas.length,
+            });
+        }
+
+        // Pagos individuales (sin grupo)
+        for (const f of sinGrupo) {
+            pagos.push({
+                ...f,
+                cheques: cheques.filter(c => c.factura_id === f.id && !c.pago_grupo_id),
+                es_grupo: false,
+                cantidad_facturas: 1,
+            });
+        }
+
+        // Ordenar por fecha_pago desc
+        pagos.sort((a, b) => (b.fecha_pago || '').localeCompare(a.fecha_pago || ''));
         res.json({ success: true, pagos });
     } catch (err) {
         res.json({ success: false, error: err.message });
@@ -435,6 +509,9 @@ function getCol(row, ...keys) {
 // UPLOAD EXCEL
 app.post('/api/upload/excel', upload.single('file'), async (req, res) => {
     try {
+        // Obtener tipo de documento del formulario (Factura, Gasto, u Otro)
+        const tipoDocFormulario = req.body.tipo_doc || '';
+
         const workbook = XLSX.read(req.file.buffer || fs.readFileSync(req.file.path), { type: 'buffer' });
         const worksheet = workbook.Sheets[workbook.SheetNames[0]];
         const data = XLSX.utils.sheet_to_json(worksheet);
@@ -457,8 +534,13 @@ app.post('/api/upload/excel', upload.single('file'), async (req, res) => {
                 'Rut', 'RUT', 'rut', 'R.U.T.', 'R.U.T',
                 'Rut Proveedor', 'RUT Proveedor'
             ) || '').trim();
+
+            // Si viene tipo_doc del formulario, usarlo; sino, del Excel
+            const tipoDocExcel = String(getCol(row, 'Tipo Doc', 'Tipo Doc.', 'tipo_doc', 'TipoDoc', 'Tipo de Documento', 'Tipo') || '').trim();
+            const tipoDocFinal = tipoDocFormulario || tipoDocExcel || 'Factura';
+
             return {
-                tipo_doc:  String(getCol(row, 'Tipo Doc', 'Tipo Doc.', 'tipo_doc', 'TipoDoc', 'Tipo de Documento', 'Tipo') || '').trim(),
+                tipo_doc:  tipoDocFinal,
                 folio:     String(getCol(row, 'Folio', 'folio', 'FOLIO', 'N° Folio', 'Nro. Folio') || '').trim(),
                 fecha:     fecha.trim(),
                 proveedor: String(getCol(row, 'Nombre', 'nombre', 'NOMBRE', 'Razón Social', 'Razon Social') || '').trim(),
@@ -522,6 +604,66 @@ app.post('/api/upload/excel', upload.single('file'), async (req, res) => {
             rutActualizadas,
             total: facturas.length,
             message: partes.length ? partes.join(' · ') : 'Sin cambios'
+        });
+    } catch (error) {
+        res.json({ success: false, error: error.message });
+    }
+});
+
+// ========== DOCUMENTOS - CREACIÓN MANUAL ==========
+
+app.post('/api/documentos/crear-manual', async (req, res) => {
+    try {
+        const { documentos } = req.body;
+
+        if (!documentos || !Array.isArray(documentos) || documentos.length === 0) {
+            return res.json({ success: false, error: 'No hay documentos para crear' });
+        }
+
+        // Obtener folios existentes
+        const existingResult = await pool.query('SELECT folio FROM facturas');
+        const existingFolios = new Set(existingResult.rows.map(r => r.folio));
+
+        let creados = 0;
+        let omitidos = 0;
+
+        for (const doc of documentos) {
+            // Validar campos obligatorios
+            if (!doc.folio || !doc.fecha_factura || !doc.nombre_proveedor || !doc.monto) {
+                omitidos++;
+                continue;
+            }
+
+            // Verificar si ya existe el folio
+            if (existingFolios.has(doc.folio)) {
+                omitidos++;
+                continue;
+            }
+
+            try {
+                await pool.query(
+                    'INSERT INTO facturas (folio, fecha, proveedor, tipo_doc, monto, estado) VALUES ($1,$2,$3,$4,$5,$6)',
+                    [
+                        doc.folio,
+                        doc.fecha_factura,
+                        doc.nombre_proveedor,
+                        doc.tipo_doc || 'Factura',
+                        parseInt(doc.monto) || 0,
+                        'pendiente'
+                    ]
+                );
+                existingFolios.add(doc.folio);
+                creados++;
+            } catch (e) {
+                omitidos++;
+            }
+        }
+
+        res.json({
+            success: true,
+            documentos_creados: creados,
+            documentos_omitidos: omitidos,
+            message: `${creados} documento${creados !== 1 ? 's' : ''} creado${creados !== 1 ? 's' : ''}`
         });
     } catch (error) {
         res.json({ success: false, error: error.message });
