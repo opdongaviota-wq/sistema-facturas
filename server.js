@@ -494,6 +494,56 @@ app.post('/api/cheques/:facturaId', async (req, res) => {
     }
 });
 
+// GET REPORTE DE CHEQUES EMITIDOS
+app.get('/api/cheques/reporte/flujo', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT
+                ch.id,
+                ch.numero_cheque,
+                ch.fecha_cheque,
+                ch.monto_cheque,
+                f.proveedor,
+                f.rut,
+                f.id as factura_id,
+                f.folio
+            FROM cheques ch
+            LEFT JOIN facturas f ON ch.factura_id = f.id
+            WHERE ch.numero_cheque IS NOT NULL AND ch.numero_cheque != ''
+            ORDER BY ch.fecha_cheque ASC, ch.numero_cheque ASC
+        `);
+
+        const hoy = new Date();
+        const cheques = result.rows.map(c => {
+            let estado = 'pendiente';
+            let dias = 0;
+
+            if (c.fecha_cheque) {
+                const fechaCheque = new Date(c.fecha_cheque + 'T00:00:00');
+                dias = Math.floor((fechaCheque - hoy) / (1000 * 60 * 60 * 24));
+
+                if (dias < 0) {
+                    estado = 'vencida';
+                } else if (dias <= 5) {
+                    estado = 'por_vencer';
+                } else {
+                    estado = 'pendiente';
+                }
+            }
+
+            return {
+                ...c,
+                estado,
+                dias
+            };
+        });
+
+        res.json({ success: true, cheques });
+    } catch (err) {
+        res.json({ success: false, error: err.message });
+    }
+});
+
 // Búsqueda flexible de columna en una fila de Excel
 // Ignora mayúsculas/minúsculas, tildes, espacios extra y no-breaking spaces
 function getCol(row, ...keys) {
