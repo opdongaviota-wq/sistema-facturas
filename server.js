@@ -50,9 +50,17 @@ async function initDB() {
             estado    TEXT,
             medio_pago  TEXT,
             fecha_pago  TEXT,
+            categoria TEXT,
             created_at  TIMESTAMPTZ DEFAULT NOW()
         )
     `);
+
+    // Agregar columna categoria si no existe
+    try {
+        await pool.query(`ALTER TABLE facturas ADD COLUMN categoria TEXT`);
+    } catch (e) {
+        // Columna ya existe, ignorar error
+    }
 
     await pool.query(`
         CREATE TABLE IF NOT EXISTS productos (
@@ -184,14 +192,23 @@ app.post('/api/facturas', async (req, res) => {
 
 // UPDATE FACTURA
 app.put('/api/facturas/:id', async (req, res) => {
-    const { estado, medio_pago, fecha_pago } = req.body;
+    const { estado, medio_pago, fecha_pago, categoria } = req.body;
     const medioPago = estado === 'pagada' ? (medio_pago || null) : null;
     const fechaPago = estado === 'pagada' ? (fecha_pago || null) : null;
     try {
-        await pool.query(
-            'UPDATE facturas SET estado=$1, medio_pago=$2, fecha_pago=$3 WHERE id=$4',
-            [estado, medioPago, fechaPago, req.params.id]
-        );
+        let query = 'UPDATE facturas SET estado=$1, medio_pago=$2, fecha_pago=$3';
+        const params = [estado, medioPago, fechaPago];
+        let paramIdx = 4;
+
+        if (categoria !== undefined) {
+            query += `, categoria=$${paramIdx++}`;
+            params.push(categoria || null);
+        }
+
+        query += ` WHERE id=$${paramIdx}`;
+        params.push(req.params.id);
+
+        await pool.query(query, params);
         res.json({ success: true });
     } catch (err) {
         res.json({ success: false, error: err.message });

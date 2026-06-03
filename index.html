@@ -207,11 +207,25 @@
                             <button onclick="filtrarPorPeriodo('mes_anterior')" id="btn-periodo-mes_anterior" class="btn-periodo">📆 Mes Anterior</button>
                             <button onclick="filtrarPorPeriodo('personalizado')" id="btn-periodo-personalizado" class="btn-periodo">🔧 Personalizado</button>
                         </div>
-                        <!-- Filtros personalizados: fecha + nombre (solo en modo Personalizado) -->
+                        <!-- Filtros personalizados: fecha + nombre + categoría (solo en modo Personalizado) -->
                         <div id="filtros-personalizados" style="display:none; flex-wrap:wrap; gap:0.8rem; align-items:flex-end; margin-bottom:0.8rem;">
                             <div style="flex:1; min-width:180px;">
                                 <label style="display:block; font-size:0.82rem; font-weight:600; margin-bottom:0.3rem; color:var(--gray);">Proveedor / Nombre:</label>
                                 <input type="text" id="filtroProveedor" placeholder="Buscar proveedor..." oninput="renderTablaFacturas()" style="width:100%; padding:0.65rem; border:1px solid var(--border); border-radius:6px; font-size:0.9rem;">
+                            </div>
+                            <div>
+                                <label style="display:block; font-size:0.82rem; font-weight:600; margin-bottom:0.3rem; color:var(--gray);">Categoría:</label>
+                                <select id="filtroCategoria" onchange="renderTablaFacturas()" style="width:100%; padding:0.65rem; border:1px solid var(--border); border-radius:6px; font-size:0.9rem; min-width:150px;">
+                                    <option value="">— Todas —</option>
+                                    <option value="Servicios">🔧 Servicios</option>
+                                    <option value="Mariscos y Pescados">🦞 Mariscos y Pescados</option>
+                                    <option value="Abarrotes">🛒 Abarrotes</option>
+                                    <option value="Congelados">❄️ Congelados</option>
+                                    <option value="Envases">📦 Envases</option>
+                                    <option value="Aseo y Limpieza">🧹 Aseo y Limpieza</option>
+                                    <option value="Líquidos">🍷 Líquidos</option>
+                                    <option value="Equipos">⚙️ Equipos</option>
+                                </select>
                             </div>
                             <div>
                                 <label style="display:block; font-size:0.82rem; font-weight:600; margin-bottom:0.3rem; color:var(--gray);">Desde:</label>
@@ -239,10 +253,12 @@
                                 <th>RUT</th>
                                 <th style="cursor:pointer; user-select:none;" onclick="toggleSortFecha()">Fecha <span id="sortIcon">▼</span></th>
                                 <th>Monto</th>
+                                <th>Categoría</th>
                                 <th>Estado</th>
+                                <th>Acciones</th>
                             </tr>
                         </thead>
-                        <tbody id="facturasTable"><tr><td colspan="7" style="text-align: center;">Cargando...</td></tr></tbody>
+                        <tbody id="facturasTable"><tr><td colspan="9" style="text-align: center;">Cargando...</td></tr></tbody>
                     </table>
                 </section>
 
@@ -1041,6 +1057,7 @@
 
         function renderTablaFacturas() {
             const texto = (document.getElementById('filtroProveedor')?.value || '').toLowerCase().trim();
+            const categoria = (document.getElementById('filtroCategoria')?.value || '').trim();
 
             // Rango de fechas según período activo
             let desde = '', hasta = '';
@@ -1056,6 +1073,7 @@
             if (texto)  lista = lista.filter(f => (f.proveedor || '').toLowerCase().includes(texto));
             if (desde)  lista = lista.filter(f => (f.fecha || '') >= desde);
             if (hasta)  lista = lista.filter(f => (f.fecha || '') <= hasta);
+            if (categoria) lista = lista.filter(f => (f.categoria || '') === categoria);
 
             // Ordenar por fecha
             lista.sort((a, b) => {
@@ -1063,8 +1081,24 @@
                 return facturasSortDir === 'asc' ? cmp : -cmp;
             });
 
+            const getCategoriaEmoji = (cat) => {
+                const cats = {
+                    'Servicios': '🔧',
+                    'Mariscos y Pescados': '🦞',
+                    'Abarrotes': '🛒',
+                    'Congelados': '❄️',
+                    'Envases': '📦',
+                    'Aseo y Limpieza': '🧹',
+                    'Líquidos': '🍷',
+                    'Equipos': '⚙️'
+                };
+                return cats[cat] || '📋';
+            };
+
             const html = lista.map(f => {
                 const est = calcularEstado(f);
+                const catEmoji = getCategoriaEmoji(f.categoria);
+                const catText = f.categoria ? `${catEmoji} ${f.categoria}` : '<span style="color:var(--gray);">Sin asignar</span>';
                 return `<tr>
                     <td style="font-size:0.82rem; color:var(--gray);">${f.tipo_doc || '-'}</td>
                     <td>${f.folio}</td>
@@ -1072,11 +1106,13 @@
                     <td style="font-size:0.82rem; color:var(--gray);">${f.rut || '-'}</td>
                     <td>${f.fecha}</td>
                     <td>$${(f.monto || 0).toLocaleString('es-CL')}</td>
+                    <td style="font-size:0.9rem;">${catText}</td>
                     <td><span class="state-badge ${est}">${labelEstado(est)}</span></td>
+                    <td><button onclick="abrirModalCategoria(${f.id}, '${f.folio}')" class="btn btn-primary" style="width:auto; padding:0.4rem 0.8rem; font-size:0.8rem;">Categoría</button></td>
                 </tr>`;
             }).join('');
 
-            document.getElementById('facturasTable').innerHTML = html || '<tr><td colspan="7" style="text-align: center; color:var(--gray);">Sin resultados</td></tr>';
+            document.getElementById('facturasTable').innerHTML = html || '<tr><td colspan="9" style="text-align: center; color:var(--gray);">Sin resultados</td></tr>';
 
             // Info de filtro
             const info = document.getElementById('facturasFiltroInfo');
@@ -1090,6 +1126,7 @@
                     etiquetas.push(lbl);
                 }
                 if (texto) etiquetas.push(`proveedor: "${texto}"`);
+                if (categoria) etiquetas.push(`categoría: "${categoria}"`);
                 info.textContent = etiquetas.length
                     ? `Mostrando ${lista.length} de ${facturas.length} facturas — ${etiquetas.join(' · ')}`
                     : `Total: ${lista.length} facturas`;
@@ -1127,6 +1164,68 @@
             if (custom) custom.style.display = 'none';
             renderTablaFacturas();
         }
+
+        // ===== GESTIÓN DE CATEGORÍAS =====
+        let modalFacturaId = null;
+        let modalFacturaFolio = null;
+
+        function abrirModalCategoria(facturaId, folio) {
+            modalFacturaId = facturaId;
+            modalFacturaFolio = folio;
+
+            const factura = facturas.find(f => f.id === facturaId);
+            document.getElementById('modalFolio').textContent = folio;
+            if (factura && factura.categoria) {
+                document.getElementById('modalCategoria').value = factura.categoria;
+            } else {
+                document.getElementById('modalCategoria').value = '';
+            }
+
+            document.getElementById('modalAsignarCategoria').style.display = 'flex';
+        }
+
+        function cerrarModalCategoria() {
+            document.getElementById('modalAsignarCategoria').style.display = 'none';
+            modalFacturaId = null;
+            modalFacturaFolio = null;
+        }
+
+        async function guardarCategoria() {
+            const categoria = document.getElementById('modalCategoria').value;
+            if (!modalFacturaId) return;
+
+            try {
+                const res = await fetch(`${API}/facturas/${modalFacturaId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ categoria: categoria || null })
+                });
+
+                const data = await res.json();
+                if (data.success) {
+                    // Actualizar factura local
+                    const factura = facturas.find(f => f.id === modalFacturaId);
+                    if (factura) {
+                        factura.categoria = categoria || null;
+                    }
+                    renderTablaFacturas();
+                    cerrarModalCategoria();
+                } else {
+                    alert('Error: ' + (data.error || 'Error desconocido'));
+                }
+            } catch (e) {
+                alert('Error al guardar categoría');
+                console.error(e);
+            }
+        }
+
+        // Cerrar modal al hacer click afuera
+        document.addEventListener('click', function(event) {
+            const modal = document.getElementById('modalAsignarCategoria');
+            if (modal && event.target === modal) {
+                cerrarModalCategoria();
+            }
+        });
 
         function handleDropExcel(e) {
             e.preventDefault();
@@ -2282,5 +2381,37 @@
             }
         });
     </script>
+
+    <!-- MODAL ASIGNAR CATEGORÍA A FACTURA -->
+    <div id="modalAsignarCategoria" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; justify-content:center; align-items:center;">
+        <div style="background:white; padding:2rem; border-radius:12px; box-shadow:0 20px 60px rgba(0,0,0,0.3); max-width:500px; width:90%;">
+            <h3 style="margin-bottom:1rem; color:var(--primary);">📋 Asignar Categoría</h3>
+
+            <div style="margin-bottom:1rem; padding:0.8rem; background:#f9fafb; border-radius:6px;">
+                <strong style="display:block; margin-bottom:0.3rem; font-size:0.9rem;">Folio:</strong>
+                <span id="modalFolio" style="color:var(--gray); font-size:0.95rem;">-</span>
+            </div>
+
+            <div style="margin-bottom:1.5rem;">
+                <label style="display:block; font-weight:700; margin-bottom:0.5rem; font-size:0.9rem;">Selecciona una categoría:</label>
+                <select id="modalCategoria" style="width:100%; padding:0.8rem; border:1px solid var(--border); border-radius:6px; font-size:0.95rem;">
+                    <option value="">— Sin categoría —</option>
+                    <option value="Servicios">🔧 Servicios</option>
+                    <option value="Mariscos y Pescados">🦞 Mariscos y Pescados</option>
+                    <option value="Abarrotes">🛒 Abarrotes</option>
+                    <option value="Congelados">❄️ Congelados</option>
+                    <option value="Envases">📦 Envases</option>
+                    <option value="Aseo y Limpieza">🧹 Aseo y Limpieza</option>
+                    <option value="Líquidos">🍷 Líquidos</option>
+                    <option value="Equipos">⚙️ Equipos</option>
+                </select>
+            </div>
+
+            <div style="display:flex; gap:0.8rem; justify-content:flex-end;">
+                <button onclick="cerrarModalCategoria()" style="padding:0.8rem 1.5rem; border:1px solid var(--border); border-radius:6px; background:white; cursor:pointer; font-weight:600;">Cancelar</button>
+                <button onclick="guardarCategoria()" style="padding:0.8rem 1.5rem; background:var(--primary); color:white; border:none; border-radius:6px; cursor:pointer; font-weight:600;">Guardar</button>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
