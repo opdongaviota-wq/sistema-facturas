@@ -244,9 +244,20 @@
                         </div>
                         <div id="facturasFiltroInfo" style="margin-top:0.5rem; font-size:0.82rem; color:var(--gray);"></div>
                     </div>
+                    <!-- Controles de selección masiva -->
+                    <div id="controlesMasivos" style="display:none; margin-bottom:1rem; padding:0.8rem; background:#f0f8ff; border-radius:6px; border-left:4px solid var(--primary);">
+                        <div style="display:flex; gap:1rem; align-items:center; flex-wrap:wrap;">
+                            <span id="conteoSeleccionadas" style="font-weight:700; color:var(--primary);">0 seleccionadas</span>
+                            <button onclick="seleccionarTodas()" class="btn btn-primary" style="width:auto; padding:0.6rem 1rem; font-size:0.9rem;">✓ Seleccionar Todas</button>
+                            <button onclick="deseleccionarTodas()" class="btn" style="width:auto; padding:0.6rem 1rem; font-size:0.9rem; background:#f3f4f6; color:var(--gray);">✕ Deseleccionar</button>
+                            <button onclick="abrirModalCategoriaLote()" class="btn btn-primary" style="width:auto; padding:0.6rem 1.5rem; font-size:0.9rem; background:var(--success);">🏷️ Asignar Categoría a Lote</button>
+                        </div>
+                    </div>
+
                     <table class="table">
                         <thead>
                             <tr>
+                                <th style="width:40px;"><input type="checkbox" id="checkTodos" onchange="toggleCheckTodos()" style="cursor:pointer; width:18px; height:18px;"></th>
                                 <th>Tipo Doc</th>
                                 <th>Folio</th>
                                 <th>Proveedor</th>
@@ -258,7 +269,7 @@
                                 <th>Acciones</th>
                             </tr>
                         </thead>
-                        <tbody id="facturasTable"><tr><td colspan="9" style="text-align: center;">Cargando...</td></tr></tbody>
+                        <tbody id="facturasTable"><tr><td colspan="10" style="text-align: center;">Cargando...</td></tr></tbody>
                     </table>
                 </section>
 
@@ -1099,7 +1110,9 @@
                 const est = calcularEstado(f);
                 const catEmoji = getCategoriaEmoji(f.categoria);
                 const catText = f.categoria ? `${catEmoji} ${f.categoria}` : '<span style="color:var(--gray);">Sin asignar</span>';
-                return `<tr>
+                const isChecked = facturasSeleccionadas.includes(f.id);
+                return `<tr style="${isChecked ? 'background:#e3f2fd;' : ''}">
+                    <td style="width:40px;"><input type="checkbox" class="checkFactura" data-id="${f.id}" ${isChecked ? 'checked' : ''} onchange="actualizarSeleccion()" style="cursor:pointer; width:18px; height:18px;"></td>
                     <td style="font-size:0.82rem; color:var(--gray);">${f.tipo_doc || '-'}</td>
                     <td>${f.folio}</td>
                     <td>${f.proveedor || '-'}</td>
@@ -1112,7 +1125,20 @@
                 </tr>`;
             }).join('');
 
-            document.getElementById('facturasTable').innerHTML = html || '<tr><td colspan="9" style="text-align: center; color:var(--gray);">Sin resultados</td></tr>';
+            document.getElementById('facturasTable').innerHTML = html || '<tr><td colspan="10" style="text-align: center; color:var(--gray);">Sin resultados</td></tr>';
+
+            // Mostrar/ocultar controles masivos
+            const controles = document.getElementById('controlesMasivos');
+            if (controles) {
+                controles.style.display = facturasSeleccionadas.length > 0 ? 'block' : 'none';
+            }
+
+            // Actualizar checkbox de "seleccionar todos"
+            const checkTodos = document.getElementById('checkTodos');
+            if (checkTodos && lista.length > 0) {
+                checkTodos.checked = lista.every(f => facturasSeleccionadas.includes(f.id));
+                checkTodos.indeterminate = facturasSeleccionadas.length > 0 && !checkTodos.checked;
+            }
 
             // Info de filtro
             const info = document.getElementById('facturasFiltroInfo');
@@ -1168,6 +1194,7 @@
         // ===== GESTIÓN DE CATEGORÍAS =====
         let modalFacturaId = null;
         let modalFacturaFolio = null;
+        let facturasSeleccionadas = [];
 
         function abrirModalCategoria(facturaId, folio) {
             modalFacturaId = facturaId;
@@ -1225,7 +1252,118 @@
             if (modal && event.target === modal) {
                 cerrarModalCategoria();
             }
+            const modalLote = document.getElementById('modalAsignarCategoriaLote');
+            if (modalLote && event.target === modalLote) {
+                cerrarModalCategoriaLote();
+            }
         });
+
+        // ===== SELECCIÓN MÚLTIPLE Y LOTE =====
+        function actualizarSeleccion() {
+            facturasSeleccionadas = [];
+            document.querySelectorAll('.checkFactura:checked').forEach(check => {
+                facturasSeleccionadas.push(parseInt(check.dataset.id));
+            });
+
+            // Actualizar contador
+            const conteo = document.getElementById('conteoSeleccionadas');
+            if (conteo) {
+                conteo.textContent = `${facturasSeleccionadas.length} seleccionada${facturasSeleccionadas.length !== 1 ? 's' : ''}`;
+            }
+
+            renderTablaFacturas();
+        }
+
+        function toggleCheckTodos() {
+            const checkTodos = document.getElementById('checkTodos');
+            const checkboxes = document.querySelectorAll('.checkFactura');
+
+            if (checkTodos.checked) {
+                checkboxes.forEach(cb => cb.checked = true);
+            } else {
+                checkboxes.forEach(cb => cb.checked = false);
+            }
+
+            actualizarSeleccion();
+        }
+
+        function seleccionarTodas() {
+            const checkboxes = document.querySelectorAll('.checkFactura');
+            checkboxes.forEach(cb => cb.checked = true);
+            actualizarSeleccion();
+        }
+
+        function deseleccionarTodas() {
+            const checkboxes = document.querySelectorAll('.checkFactura');
+            checkboxes.forEach(cb => cb.checked = false);
+            facturasSeleccionadas = [];
+            const conteo = document.getElementById('conteoSeleccionadas');
+            if (conteo) conteo.textContent = '0 seleccionadas';
+            const controles = document.getElementById('controlesMasivos');
+            if (controles) controles.style.display = 'none';
+            renderTablaFacturas();
+        }
+
+        function abrirModalCategoriaLote() {
+            if (facturasSeleccionadas.length === 0) {
+                alert('Debes seleccionar al menos una factura');
+                return;
+            }
+
+            const conteo = document.getElementById('modalConteoLote');
+            if (conteo) {
+                conteo.textContent = facturasSeleccionadas.length;
+            }
+
+            document.getElementById('modalAsignarCategoriaLote').style.display = 'flex';
+        }
+
+        function cerrarModalCategoriaLote() {
+            document.getElementById('modalAsignarCategoriaLote').style.display = 'none';
+        }
+
+        async function guardarCategoriaLote() {
+            const categoria = document.getElementById('modalCategoriaLote').value;
+
+            if (facturasSeleccionadas.length === 0) {
+                alert('No hay facturas seleccionadas');
+                return;
+            }
+
+            try {
+                // Enviar actualización para cada factura
+                const promesas = facturasSeleccionadas.map(facturaId =>
+                    fetch(`${API}/facturas/${facturaId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ categoria: categoria || null })
+                    })
+                );
+
+                const respuestas = await Promise.all(promesas);
+                const todos = await Promise.all(respuestas.map(r => r.json()));
+
+                if (todos.every(d => d.success)) {
+                    // Actualizar facturas locales
+                    facturasSeleccionadas.forEach(id => {
+                        const factura = facturas.find(f => f.id === id);
+                        if (factura) {
+                            factura.categoria = categoria || null;
+                        }
+                    });
+
+                    alert(`✅ Categoría asignada a ${facturasSeleccionadas.length} factura${facturasSeleccionadas.length !== 1 ? 's' : ''}`);
+                    facturasSeleccionadas = [];
+                    renderTablaFacturas();
+                    cerrarModalCategoriaLote();
+                } else {
+                    alert('Error al guardar algunas categorías');
+                }
+            } catch (e) {
+                alert('Error al guardar categorías');
+                console.error(e);
+            }
+        }
 
         function handleDropExcel(e) {
             e.preventDefault();
@@ -1276,6 +1414,10 @@
                 if (data.success) {
                     document.getElementById('excelMsg').innerHTML = `<div class="msg success">✅ ${data.message}</div>`;
                     await cargarFacturas();
+
+                    // Auto-categorizar facturas nuevas basadas en RUT existente
+                    await autoCategorrizarPorRUT();
+
                     // Resetear formulario
                     document.getElementById('excelFile').value = '';
                     document.getElementById('tipoDocImportar').value = 'factura';
@@ -1285,6 +1427,63 @@
                 }
             } catch (error) {
                 document.getElementById('excelMsg').innerHTML = '<div class="msg error">❌ Error al procesar</div>';
+            }
+        }
+
+        async function autoCategorrizarPorRUT() {
+            try {
+                // Crear un mapa de RUT -> categoría de facturas existentes
+                const rutCategoriaMap = {};
+                for (const factura of facturas) {
+                    if (factura.rut && factura.categoria) {
+                        if (!rutCategoriaMap[factura.rut]) {
+                            rutCategoriaMap[factura.rut] = factura.categoria;
+                        }
+                    }
+                }
+
+                // Buscar facturas sin categoría y asignarles si su RUT existe
+                const actualizaciones = [];
+                for (const factura of facturas) {
+                    if (!factura.categoria && factura.rut && rutCategoriaMap[factura.rut]) {
+                        actualizaciones.push({
+                            id: factura.id,
+                            categoria: rutCategoriaMap[factura.rut]
+                        });
+                    }
+                }
+
+                // Guardar actualizaciones
+                if (actualizaciones.length > 0) {
+                    const promesas = actualizaciones.map(upd =>
+                        fetch(`${API}/facturas/${upd.id}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ categoria: upd.categoria })
+                        })
+                    );
+
+                    await Promise.all(promesas);
+
+                    // Actualizar datos locales
+                    for (const upd of actualizaciones) {
+                        const factura = facturas.find(f => f.id === upd.id);
+                        if (factura) {
+                            factura.categoria = upd.categoria;
+                        }
+                    }
+
+                    // Mostrar información
+                    const msgEl = document.getElementById('excelMsg');
+                    if (msgEl && msgEl.querySelector('.msg.success')) {
+                        const originalMsg = msgEl.querySelector('.msg.success').textContent;
+                        msgEl.innerHTML = `<div class="msg success">✅ ${originalMsg}<br><small>+ ${actualizaciones.length} factura${actualizaciones.length !== 1 ? 's' : ''} auto-categorizadas por RUT existente</small></div>`;
+                    }
+
+                    renderTablaFacturas();
+                }
+            } catch (e) {
+                console.error('Error auto-categorizando:', e);
             }
         }
 
@@ -2410,6 +2609,38 @@
             <div style="display:flex; gap:0.8rem; justify-content:flex-end;">
                 <button onclick="cerrarModalCategoria()" style="padding:0.8rem 1.5rem; border:1px solid var(--border); border-radius:6px; background:white; cursor:pointer; font-weight:600;">Cancelar</button>
                 <button onclick="guardarCategoria()" style="padding:0.8rem 1.5rem; background:var(--primary); color:white; border:none; border-radius:6px; cursor:pointer; font-weight:600;">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL ASIGNAR CATEGORÍA A LOTE -->
+    <div id="modalAsignarCategoriaLote" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; justify-content:center; align-items:center;">
+        <div style="background:white; padding:2rem; border-radius:12px; box-shadow:0 20px 60px rgba(0,0,0,0.3); max-width:500px; width:90%;">
+            <h3 style="margin-bottom:1rem; color:var(--primary);">🏷️ Asignar Categoría a Lote</h3>
+
+            <div style="margin-bottom:1.5rem; padding:1rem; background:#e3f2fd; border-radius:6px; border-left:4px solid var(--primary);">
+                <strong style="display:block; margin-bottom:0.5rem; font-size:0.95rem;">Facturas seleccionadas:</strong>
+                <span id="modalConteoLote" style="color:var(--primary); font-size:1.2rem; font-weight:700;">0</span>
+            </div>
+
+            <div style="margin-bottom:1.5rem;">
+                <label style="display:block; font-weight:700; margin-bottom:0.5rem; font-size:0.9rem;">Selecciona una categoría:</label>
+                <select id="modalCategoriaLote" style="width:100%; padding:0.8rem; border:1px solid var(--border); border-radius:6px; font-size:0.95rem;">
+                    <option value="">— Sin categoría —</option>
+                    <option value="Servicios">🔧 Servicios</option>
+                    <option value="Mariscos y Pescados">🦞 Mariscos y Pescados</option>
+                    <option value="Abarrotes">🛒 Abarrotes</option>
+                    <option value="Congelados">❄️ Congelados</option>
+                    <option value="Envases">📦 Envases</option>
+                    <option value="Aseo y Limpieza">🧹 Aseo y Limpieza</option>
+                    <option value="Líquidos">🍷 Líquidos</option>
+                    <option value="Equipos">⚙️ Equipos</option>
+                </select>
+            </div>
+
+            <div style="display:flex; gap:0.8rem; justify-content:flex-end;">
+                <button onclick="cerrarModalCategoriaLote()" style="padding:0.8rem 1.5rem; border:1px solid var(--border); border-radius:6px; background:white; cursor:pointer; font-weight:600;">Cancelar</button>
+                <button onclick="guardarCategoriaLote()" style="padding:0.8rem 1.5rem; background:var(--success); color:white; border:none; border-radius:6px; cursor:pointer; font-weight:600;">✓ Guardar a Todos</button>
             </div>
         </div>
     </div>
