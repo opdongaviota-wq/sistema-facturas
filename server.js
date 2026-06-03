@@ -7,7 +7,19 @@ import XLSX from 'xlsx';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
+import * as pdfParse from 'pdf-parse';
+
+// Cargar variables de entorno desde .env
+const envPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '.env');
+if (fs.existsSync(envPath)) {
+    const envContent = fs.readFileSync(envPath, 'utf-8');
+    envContent.split('\n').forEach(line => {
+        const match = line.match(/^([^=]+)=(.*)$/);
+        if (match && match[1] && match[1].trim()) {
+            process.env[match[1].trim()] = match[2]?.trim() || '';
+        }
+    });
+}
 
 const { Pool } = pg;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -282,14 +294,8 @@ function parsearTextoPDF(text) {
 app.post('/api/inventario/parsear-pdf', upload.single('pdf'), async (req, res) => {
     try {
         if (!req.file) return res.json({ success: false, error: 'No se recibió archivo PDF' });
-        const data = new Uint8Array(req.file.buffer);
-        const pdfDoc = await getDocument({ data }).promise;
-        let text = '';
-        for (let i = 1; i <= pdfDoc.numPages; i++) {
-            const page = await pdfDoc.getPage(i);
-            const content = await page.getTextContent();
-            text += content.items.map(x => x.str).join(' ') + '\n';
-        }
+        const pdfData = await pdfParse(req.file.buffer);
+        const text = pdfData.text;
         const resultado = parsearTextoPDF(text);
         res.json({ success: true, ...resultado, texto_raw: text });
     } catch (err) {
