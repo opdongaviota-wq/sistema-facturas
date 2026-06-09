@@ -76,7 +76,8 @@
         .preview-item-row td { padding:0.5rem 0.6rem; font-size:0.85rem; border-bottom:1px solid #f3f4f6; }
         .cat-select { font-size:0.8rem; padding:0.2rem 0.4rem; border:1px solid #d1d5db; border-radius:6px; }
         .state-badge.transferencia { background: #dbeafe; color: #1e40af; }
-        .state-badge.cheque { background: #fce7f3; color: #9d174d; }
+        .state-badge.cheque        { background: #fce7f3; color: #9d174d; }
+        .state-badge.webpay        { background: #d1fae5; color: #065f46; }
         .grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 1rem; align-items: end; }
         .cheque-row { display: grid; grid-template-columns: 1.5fr 1.5fr 2fr auto; gap: 0.5rem; margin-bottom: 0.5rem; align-items: end; }
         .cheque-row label { font-size: 0.78rem; color: var(--gray); display: block; margin-bottom: 0.3rem; font-weight: 600; }
@@ -217,14 +218,18 @@
                                 <label style="display:block; font-size:0.82rem; font-weight:600; margin-bottom:0.3rem; color:var(--gray);">Categoría:</label>
                                 <select id="filtroCategoria" onchange="renderTablaFacturas()" style="width:100%; padding:0.65rem; border:1px solid var(--border); border-radius:6px; font-size:0.9rem; min-width:150px;">
                                     <option value="">— Todas —</option>
-                                    <option value="Servicios">🔧 Servicios</option>
-                                    <option value="Mariscos y Pescados">🦞 Mariscos y Pescados</option>
                                     <option value="Abarrotes">🛒 Abarrotes</option>
+                                    <option value="Aseo & Limpieza">🧹 Aseo & Limpieza</option>
+                                    <option value="Autopistas">🛣️ Autopistas</option>
                                     <option value="Congelados">❄️ Congelados</option>
                                     <option value="Envases">📦 Envases</option>
-                                    <option value="Aseo y Limpieza">🧹 Aseo y Limpieza</option>
+                                    <option value="Ferretería">🔨 Ferretería</option>
+                                    <option value="Frutas & Verduras">🥕 Frutas & Verduras</option>
+                                    <option value="Carnes">🥩 Carnes</option>
+                                    <option value="Pescados y Mariscos">🦞 Pescados y Mariscos</option>
+                                    <option value="Comercio">🏬 Comercio</option>
                                     <option value="Líquidos">🍷 Líquidos</option>
-                                    <option value="Equipos">⚙️ Equipos</option>
+                                    <option value="Servicios">🔧 Servicios</option>
                                 </select>
                             </div>
                             <div>
@@ -482,6 +487,7 @@
                                     <select id="medioPago" onchange="toggleChequeFields()">
                                         <option value="transferencia">🏦 Transferencia</option>
                                         <option value="cheque">📄 Cheque</option>
+                                        <option value="webpay">💳 WebPay</option>
                                     </select>
                                 </div>
                                 <div class="form-group">
@@ -513,37 +519,43 @@
                     <!-- Filtros -->
                     <div class="white-card">
                         <h3 style="margin-bottom: 1rem; font-size: 1rem; color: var(--gray);">🔍 Filtrar Pagos Registrados</h3>
-                        <div class="filtros-grid">
+                        <div style="display:grid; grid-template-columns:1.5fr 1fr 1fr 1fr auto; gap:1rem; align-items:end;">
                             <div class="form-group" style="margin-bottom:0;">
-                                <label>Medio de Pago:</label>
+                                <label style="font-size:0.85rem; font-weight:600; color:var(--gray); display:block; margin-bottom:0.3rem;">Proveedor:</label>
+                                <input type="text" id="filtroPagosProveedor" placeholder="Nombre proveedor..." oninput="debouncedCargarPagos()" style="padding:0.65rem; width:100%; border:1px solid var(--border); border-radius:6px; font-size:0.9rem;">
+                            </div>
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label style="font-size:0.85rem; font-weight:600; color:var(--gray); display:block; margin-bottom:0.3rem;">Medio de Pago:</label>
                                 <select id="filtroMedio" onchange="cargarPagos()">
                                     <option value="">— Todos —</option>
                                     <option value="transferencia">🏦 Transferencia</option>
                                     <option value="cheque">📄 Cheque</option>
+                                    <option value="webpay">💳 WebPay</option>
                                 </select>
                             </div>
                             <div class="form-group" style="margin-bottom:0;">
-                                <label>Fecha Pago Desde:</label>
+                                <label style="font-size:0.85rem; font-weight:600; color:var(--gray); display:block; margin-bottom:0.3rem;">Fecha Desde:</label>
                                 <input type="date" id="filtroDesde" onchange="cargarPagos()">
                             </div>
                             <div class="form-group" style="margin-bottom:0;">
-                                <label>Fecha Pago Hasta:</label>
+                                <label style="font-size:0.85rem; font-weight:600; color:var(--gray); display:block; margin-bottom:0.3rem;">Fecha Hasta:</label>
                                 <input type="date" id="filtroHasta" onchange="cargarPagos()">
                             </div>
                             <button class="btn" onclick="limpiarFiltros()" style="background:#f3f4f6; color:var(--gray);">Limpiar</button>
                         </div>
+                        <div id="pagosFilterInfo" style="margin-top:0.6rem; font-size:0.82rem; color:var(--gray);"></div>
                     </div>
 
                     <!-- Tabla de pagos -->
                     <table class="table">
                         <thead>
                             <tr>
-                                <th>Folio / Grupo</th>
-                                <th>Proveedor(es)</th>
-                                <th>Monto Total</th>
+                                <th>Folio</th>
+                                <th>Fecha</th>
+                                <th>Proveedor</th>
                                 <th>Medio de Pago</th>
-                                <th>Fecha de Pago</th>
-                                <th>Detalle</th>
+                                <th>Monto</th>
+                                <th>Detalle Cheques</th>
                             </tr>
                         </thead>
                         <tbody id="pagosTable">
@@ -658,11 +670,11 @@
                         <div class="filtros-reporte">
                             <div class="form-group" style="margin-bottom:0;">
                                 <label style="font-size:0.82rem; font-weight:600; color:var(--gray); display:block; margin-bottom:0.3rem;">Proveedor:</label>
-                                <input type="text" id="rep-f-proveedor" placeholder="Nombre proveedor..." style="padding:0.7rem;">
+                                <input type="text" id="rep-f-proveedor" placeholder="Nombre proveedor..." onchange="aplicarFiltrosReporte()" oninput="aplicarFiltrosReporte()" style="padding:0.7rem;">
                             </div>
                             <div class="form-group" style="margin-bottom:0;">
                                 <label style="font-size:0.82rem; font-weight:600; color:var(--gray); display:block; margin-bottom:0.3rem;">Estado:</label>
-                                <select id="rep-f-estado" style="padding:0.7rem;">
+                                <select id="rep-f-estado" onchange="aplicarFiltrosReporte()" style="padding:0.7rem;">
                                     <option value="">— Todos —</option>
                                     <option value="pendiente">⏳ Pendiente</option>
                                     <option value="por_vencer">🟠 Por Vencer</option>
@@ -672,15 +684,14 @@
                             </div>
                             <div class="form-group" style="margin-bottom:0;">
                                 <label style="font-size:0.82rem; font-weight:600; color:var(--gray); display:block; margin-bottom:0.3rem;">Fecha Desde:</label>
-                                <input type="date" id="rep-f-desde" style="padding:0.7rem;">
+                                <input type="date" id="rep-f-desde" onchange="aplicarFiltrosReporte()" style="padding:0.7rem;">
                             </div>
                             <div class="form-group" style="margin-bottom:0;">
                                 <label style="font-size:0.82rem; font-weight:600; color:var(--gray); display:block; margin-bottom:0.3rem;">Fecha Hasta:</label>
-                                <input type="date" id="rep-f-hasta" style="padding:0.7rem;">
+                                <input type="date" id="rep-f-hasta" onchange="aplicarFiltrosReporte()" style="padding:0.7rem;">
                             </div>
                             <div style="display:flex; gap:0.5rem; align-items:flex-end;">
-                                <button class="btn btn-primary" onclick="aplicarFiltrosReporte()" style="width:auto; padding:0.7rem 1.2rem;">Buscar</button>
-                                <button class="btn" onclick="limpiarFiltrosReporte()" style="width:auto; padding:0.7rem 0.9rem; background:#f3f4f6; color:var(--gray);">✕</button>
+                                <button class="btn" onclick="limpiarFiltrosReporte()" style="width:auto; padding:0.7rem 0.9rem; background:#f3f4f6; color:var(--gray);">Limpiar</button>
                             </div>
                         </div>
                         <div id="rep-filtro-info" style="font-size:0.82rem; color:var(--gray); margin-bottom:0.5rem;"></div>
@@ -829,6 +840,10 @@
 
         async function login(e) {
             e.preventDefault();
+            const btnLogin = e.target.querySelector('button');
+            btnLogin.disabled = true;
+            btnLogin.textContent = '⏳ Ingresando...';
+
             try {
                 const res = await fetch(`${API}/auth/login`, {
                     method: 'POST',
@@ -849,13 +864,25 @@
                     if (currentUser && currentUser.rol === 'admin') {
                         document.getElementById('navConfiguracion').style.display = 'block';
                     }
-                    cargarDatos();
+
+                    // Cargar datos con timeout para evitar que se quede pegado
+                    Promise.race([
+                        cargarDatos(),
+                        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000))
+                    ]).catch(err => {
+                        console.warn('Datos cargados con retraso:', err.message);
+                    });
+
                     setTimeout(setupDropZone, 300);
                 } else {
                     alert(data.message || 'Email o contraseña incorrectos');
+                    btnLogin.disabled = false;
+                    btnLogin.textContent = '🔓 Ingresar';
                 }
             } catch (error) {
-                alert('Error de conexión al servidor');
+                alert('Error de conexión al servidor: ' + error.message);
+                btnLogin.disabled = false;
+                btnLogin.textContent = '🔓 Ingresar';
             }
         }
 
@@ -884,6 +911,7 @@
         async function cargarDatos() {
             await cargarFacturas();
             await cargarProductos();
+            await cargarCheques();
         }
 
         async function cargarFacturas() {
@@ -1121,7 +1149,10 @@
                     <td>$${(f.monto || 0).toLocaleString('es-CL')}</td>
                     <td style="font-size:0.9rem;">${catText}</td>
                     <td><span class="state-badge ${est}">${labelEstado(est)}</span></td>
-                    <td><button onclick="abrirModalCategoria(${f.id}, '${f.folio}')" class="btn btn-primary" style="width:auto; padding:0.4rem 0.8rem; font-size:0.8rem;">Categoría</button></td>
+                    <td style="display:flex; gap:0.4rem;">
+                        <button onclick="abrirModalCategoria(${f.id}, '${f.folio}')" class="btn btn-primary" style="width:auto; padding:0.4rem 0.8rem; font-size:0.8rem;">Categoría</button>
+                        <button onclick="eliminarRegistro(${f.id}, '${f.folio}')" class="btn" style="width:auto; padding:0.4rem 0.8rem; font-size:0.8rem; background:#ef4444; color:white; border:none; border-radius:6px; cursor:pointer;">🗑️ Eliminar</button>
+                    </td>
                 </tr>`;
             }).join('');
 
@@ -1194,7 +1225,6 @@
         // ===== GESTIÓN DE CATEGORÍAS =====
         let modalFacturaId = null;
         let modalFacturaFolio = null;
-        let facturasSeleccionadas = [];
 
         function abrirModalCategoria(facturaId, folio) {
             modalFacturaId = facturaId;
@@ -1361,6 +1391,32 @@
                 }
             } catch (e) {
                 alert('Error al guardar categorías');
+                console.error(e);
+            }
+        }
+
+        async function eliminarRegistro(facturaId, folio) {
+            const confirmacion = confirm(`⚠️ ¿Está seguro que desea eliminar el registro ${folio}?\n\nEsta acción no se puede deshacer.`);
+            if (!confirmacion) return;
+
+            try {
+                const res = await fetch(`${API}/facturas/${facturaId}`, {
+                    method: 'DELETE'
+                });
+
+                const data = await res.json();
+                if (data.success) {
+                    alert(`✅ Registro ${folio} eliminado correctamente`);
+                    // Remover de la lista local
+                    facturas = facturas.filter(f => f.id !== facturaId);
+                    // Remover de seleccionadas si estaba ahí
+                    facturasSeleccionadas = facturasSeleccionadas.filter(id => id !== facturaId);
+                    renderTablaFacturas();
+                } else {
+                    alert(`Error: ${data.message || 'No se pudo eliminar el registro'}`);
+                }
+            } catch (e) {
+                alert('Error al eliminar el registro');
                 console.error(e);
             }
         }
@@ -1870,67 +1926,114 @@
         }
 
         // ===== PAGOS: tabla con filtros =====
+        let _pagosDebounce = null;
+        function debouncedCargarPagos() {
+            clearTimeout(_pagosDebounce);
+            _pagosDebounce = setTimeout(cargarPagos, 350);
+        }
+
         async function cargarPagos() {
-            const medio = document.getElementById('filtroMedio')?.value || '';
-            const desde = document.getElementById('filtroDesde')?.value || '';
-            const hasta = document.getElementById('filtroHasta')?.value || '';
+            const proveedor = (document.getElementById('filtroPagosProveedor')?.value || '').trim();
+            const medio  = document.getElementById('filtroMedio')?.value  || '';
+            const desde  = document.getElementById('filtroDesde')?.value  || '';
+            const hasta  = document.getElementById('filtroHasta')?.value  || '';
+
+            const infoEl = document.getElementById('pagosFilterInfo');
+
+            // Sin filtros → no mostrar resultados
+            if (!proveedor && !medio && !desde && !hasta) {
+                if (infoEl) infoEl.textContent = '';
+                mostrarPagos(null);
+                return;
+            }
 
             const params = new URLSearchParams();
-            if (medio) params.append('medio_pago', medio);
-            if (desde) params.append('fecha_desde', desde);
-            if (hasta) params.append('fecha_hasta', hasta);
+            if (proveedor) params.append('proveedor', proveedor);
+            if (medio)     params.append('medio_pago', medio);
+            if (desde)     params.append('fecha_desde', desde);
+            if (hasta)     params.append('fecha_hasta', hasta);
 
             try {
-                const res = await fetch(`${API}/pagos?${params}`);
+                const res  = await fetch(`${API}/pagos?${params}`);
                 const data = await res.json();
-                mostrarPagos(data.pagos || []);
+                const pagos = data.pagos || [];
+
+                // Info de resultados
+                if (infoEl) {
+                    const total = pagos.reduce((s, p) => s + (p.monto || 0), 0);
+                    const etiquetas = [];
+                    if (proveedor) etiquetas.push(`proveedor: "${proveedor}"`);
+                    if (medio)     etiquetas.push({ transferencia:'Transferencia', cheque:'Cheque', webpay:'WebPay' }[medio] || medio);
+                    if (desde)     etiquetas.push(`desde ${desde}`);
+                    if (hasta)     etiquetas.push(`hasta ${hasta}`);
+                    infoEl.textContent = pagos.length
+                        ? `${pagos.length} pago${pagos.length !== 1 ? 's' : ''} · $${total.toLocaleString('es-CL')} — ${etiquetas.join(' · ')}`
+                        : `Sin resultados — ${etiquetas.join(' · ')}`;
+                }
+
+                mostrarPagos(pagos);
             } catch (e) { console.error(e); }
         }
 
         function mostrarPagos(pagos) {
             const tbody = document.getElementById('pagosTable');
+            if (pagos === null) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--gray); padding:2.5rem;">🔍 Selecciona al menos un filtro para ver los pagos registrados</td></tr>';
+                return;
+            }
             if (!pagos.length) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--gray); padding:2rem;">Sin pagos registrados con los filtros aplicados</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--gray); padding:2rem;">Sin pagos con los filtros aplicados</td></tr>';
                 return;
             }
             tbody.innerHTML = pagos.map(p => {
-                const medioLabel = p.medio_pago === 'cheque' ? '📄 Cheque' : p.medio_pago === 'transferencia' ? '🏦 Transferencia' : '-';
-                let detailHtml = '-';
+                const medioLabel = p.medio_pago === 'cheque' ? '📄 Cheque' : p.medio_pago === 'transferencia' ? '🏦 Transferencia' : p.medio_pago === 'webpay' ? '💳 WebPay' : '❓ Otro';
+                let detalleCheques = '-';
 
-                // Si es un grupo, mostrar todas las facturas
-                if (p.es_grupo && p.facturas && p.facturas.length) {
-                    detailHtml = `<div style="font-size:0.8rem;">
-                        <div style="font-weight:700; margin-bottom:0.4rem; color:var(--primary);">📦 Grupo (${p.cantidad_facturas} factura${p.cantidad_facturas !== 1 ? 's' : ''})</div>
-                        ${p.facturas.map(f => `<div style="padding:0.2rem 0; border-bottom:1px solid #f0f0f0;">${f.folio} — ${f.proveedor || ''} — $${(f.monto || 0).toLocaleString('es-CL')}</div>`).join('')}
-                        ${p.cheques && p.cheques.length ? `<div style="margin-top:0.4rem; border-top:1px solid #d1d5db; padding-top:0.4rem; font-weight:700;">Cheques:</div>` +
-                            p.cheques.map(c => `<div style="padding:0.2rem 0;">N°${c.numero_cheque || '-'} · ${c.fecha_cheque || ''} · $${(c.monto_cheque || 0).toLocaleString('es-CL')}</div>`).join('') : ''}
-                    </div>`;
-                } else if (p.medio_pago === 'cheque' && p.cheques && p.cheques.length) {
-                    // Pago individual con cheques
-                    detailHtml = p.cheques.map(c =>
-                        `<div style="font-size:0.8rem; padding:0.15rem 0; border-bottom:1px solid #f0f0f0;">` +
-                        `${c.numero_cheque ? '<b>N°' + c.numero_cheque + '</b> · ' : ''}` +
-                        `${c.fecha_cheque || ''} · ` +
-                        `<b>$${(c.monto_cheque || 0).toLocaleString('es-CL')}</b></div>`
-                    ).join('');
+                // Detalle de cheques
+                if (p.medio_pago === 'cheque' && p.cheques && p.cheques.length) {
+                    const cantCheques = p.cheques.length;
+                    const totalMonto = p.cheques.reduce((sum, c) => sum + (c.monto_cheque || 0), 0);
+
+                    if (cantCheques === 1) {
+                        const c = p.cheques[0];
+                        detalleCheques = `<div style="font-size:0.85rem; line-height:1.5;">
+                            <div><b>N° ${c.numero_cheque || '-'}</b></div>
+                            <div style="color:var(--gray);">📅 ${c.fecha_cheque || '-'}</div>
+                            <div style="color:var(--primary); font-weight:600;">$${(c.monto_cheque || 0).toLocaleString('es-CL')}</div>
+                        </div>`;
+                    } else {
+                        const detalleLineas = p.cheques.map(c =>
+                            `<div style="padding:0.25rem 0; border-bottom:1px solid #e5e7eb;">
+                                <b>N° ${c.numero_cheque || '-'}</b> — 📅 ${c.fecha_cheque || '-'} — $${(c.monto_cheque || 0).toLocaleString('es-CL')}
+                            </div>`
+                        ).join('');
+                        detalleCheques = `<div style="font-size:0.85rem;">
+                            <div style="font-weight:700; margin-bottom:0.4rem;"><b>${cantCheques} cheques</b></div>
+                            <div>${detalleLineas}</div>
+                            <div style="color:var(--primary); font-weight:600; margin-top:0.3rem;">Total: $${totalMonto.toLocaleString('es-CL')}</div>
+                        </div>`;
+                    }
                 }
 
-                const folioLabel = p.es_grupo ? `🔗 ${p.folio}` : p.folio;
                 return `<tr>
-                    <td><strong>${folioLabel}</strong></td>
+                    <td><strong>${p.folio || '-'}</strong></td>
+                    <td style="font-size:0.9rem;">${p.fecha_pago || '-'}</td>
                     <td>${p.proveedor || '-'}</td>
+                    <td>${medioLabel}</td>
                     <td style="font-weight:700; color:var(--primary);">$${(p.monto || 0).toLocaleString('es-CL')}</td>
-                    <td><span class="state-badge ${p.medio_pago || ''}">${medioLabel}</span></td>
-                    <td>${p.fecha_pago || '-'}</td>
-                    <td>${detailHtml}</td>
+                    <td>${detalleCheques}</td>
                 </tr>`;
             }).join('');
         }
 
         function limpiarFiltros() {
+            const pp = document.getElementById('filtroPagosProveedor');
+            if (pp) pp.value = '';
             document.getElementById('filtroMedio').value = '';
             document.getElementById('filtroDesde').value = '';
             document.getElementById('filtroHasta').value = '';
+            const infoEl = document.getElementById('pagosFilterInfo');
+            if (infoEl) infoEl.textContent = '';
             cargarPagos();
         }
 
@@ -2023,11 +2126,13 @@
                 } else {
                     const tf = grupos.pagada.filter(f => f.medio_pago === 'transferencia');
                     const ch = grupos.pagada.filter(f => f.medio_pago === 'cheque');
-                    const ot = grupos.pagada.filter(f => !['transferencia','cheque'].includes(f.medio_pago));
+                    const wp = grupos.pagada.filter(f => f.medio_pago === 'webpay');
+                    const ot = grupos.pagada.filter(f => !['transferencia','cheque','webpay'].includes(f.medio_pago));
                     const medios = [
                         { label: '🏦 Transferencia', arr: tf, color: '#1e40af' },
                         { label: '📄 Cheque',        arr: ch, color: '#9d174d' },
-                        ...(ot.length ? [{ label: '❓ Otro', arr: ot, color: '#6b7280' }] : []),
+                        ...(wp.length ? [{ label: '💳 WebPay', arr: wp, color: '#065f46' }] : []),
+                        ...(ot.length ? [{ label: '❓ Otro',   arr: ot, color: '#6b7280' }] : []),
                     ];
                     mediosEl.innerHTML = medios.map(m => `
                         <div style="display:flex; justify-content:space-between; align-items:center; padding:0.8rem; background:#f9fafb; border-radius:6px; border-left:3px solid ${m.color}; margin-bottom:0.7rem;">
@@ -2103,7 +2208,17 @@
                 ? '<tr><td colspan="8" style="text-align:center; color:var(--gray); padding:2rem;">Sin resultados</td></tr>'
                 : lista.map(f => {
                     const est = f.estadoCalc;
-                    const medioLabel = f.medio_pago === 'transferencia' ? '🏦 Transf.' : f.medio_pago === 'cheque' ? '📄 Cheque' : (f.medio_pago || '-');
+                    const medioLabel = f.medio_pago === 'transferencia' ? '🏦 Transf.' : f.medio_pago === 'cheque' ? '📄 Cheque' : f.medio_pago === 'webpay' ? '💳 WebPay' : (f.medio_pago || '-');
+
+                    // Si es cheque, buscar fecha de canje del cheque
+                    let fechaMuestra = f.fecha_pago || '-';
+                    if (f.medio_pago === 'cheque' && f.id) {
+                        const cheque = chequesData.find(c => c.factura_id === f.id);
+                        if (cheque) {
+                            fechaMuestra = cheque.fecha_cheque || '-';
+                        }
+                    }
+
                     return `<tr>
                         <td>${f.folio}</td>
                         <td>${f.proveedor || '-'}</td>
@@ -2112,7 +2227,7 @@
                         <td>$${(f.monto || 0).toLocaleString('es-CL')}</td>
                         <td><span class="state-badge ${est}">${labelEstado(est)}</span></td>
                         <td style="font-size:0.85rem;">${medioLabel}</td>
-                        <td style="font-size:0.85rem;">${f.fecha_pago || '-'}</td>
+                        <td style="font-size:0.85rem;">${fechaMuestra}</td>
                     </tr>`;
                 }).join('');
         }
@@ -2595,14 +2710,18 @@
                 <label style="display:block; font-weight:700; margin-bottom:0.5rem; font-size:0.9rem;">Selecciona una categoría:</label>
                 <select id="modalCategoria" style="width:100%; padding:0.8rem; border:1px solid var(--border); border-radius:6px; font-size:0.95rem;">
                     <option value="">— Sin categoría —</option>
-                    <option value="Servicios">🔧 Servicios</option>
-                    <option value="Mariscos y Pescados">🦞 Mariscos y Pescados</option>
                     <option value="Abarrotes">🛒 Abarrotes</option>
+                    <option value="Aseo & Limpieza">🧹 Aseo & Limpieza</option>
+                    <option value="Autopistas">🛣️ Autopistas</option>
                     <option value="Congelados">❄️ Congelados</option>
                     <option value="Envases">📦 Envases</option>
-                    <option value="Aseo y Limpieza">🧹 Aseo y Limpieza</option>
+                    <option value="Ferretería">🔨 Ferretería</option>
+                    <option value="Frutas & Verduras">🥕 Frutas & Verduras</option>
+                    <option value="Carnes">🥩 Carnes</option>
+                    <option value="Pescados y Mariscos">🦞 Pescados y Mariscos</option>
+                    <option value="Comercio">🏬 Comercio</option>
                     <option value="Líquidos">🍷 Líquidos</option>
-                    <option value="Equipos">⚙️ Equipos</option>
+                    <option value="Servicios">🔧 Servicios</option>
                 </select>
             </div>
 
@@ -2627,14 +2746,18 @@
                 <label style="display:block; font-weight:700; margin-bottom:0.5rem; font-size:0.9rem;">Selecciona una categoría:</label>
                 <select id="modalCategoriaLote" style="width:100%; padding:0.8rem; border:1px solid var(--border); border-radius:6px; font-size:0.95rem;">
                     <option value="">— Sin categoría —</option>
-                    <option value="Servicios">🔧 Servicios</option>
-                    <option value="Mariscos y Pescados">🦞 Mariscos y Pescados</option>
                     <option value="Abarrotes">🛒 Abarrotes</option>
+                    <option value="Aseo & Limpieza">🧹 Aseo & Limpieza</option>
+                    <option value="Autopistas">🛣️ Autopistas</option>
                     <option value="Congelados">❄️ Congelados</option>
                     <option value="Envases">📦 Envases</option>
-                    <option value="Aseo y Limpieza">🧹 Aseo y Limpieza</option>
+                    <option value="Ferretería">🔨 Ferretería</option>
+                    <option value="Frutas & Verduras">🥕 Frutas & Verduras</option>
+                    <option value="Carnes">🥩 Carnes</option>
+                    <option value="Pescados y Mariscos">🦞 Pescados y Mariscos</option>
+                    <option value="Comercio">🏬 Comercio</option>
                     <option value="Líquidos">🍷 Líquidos</option>
-                    <option value="Equipos">⚙️ Equipos</option>
+                    <option value="Servicios">🔧 Servicios</option>
                 </select>
             </div>
 
