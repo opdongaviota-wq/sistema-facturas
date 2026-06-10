@@ -435,11 +435,14 @@
 
                     <!-- Formulario de registro -->
                     <div class="white-card">
-                        <h3 style="margin-bottom: 1rem; font-size: 1rem; color: var(--gray);">Registrar Pago (individual o agrupado)</h3>
+                        <div style="margin-bottom:1rem;">
+                            <h3 style="font-size:1rem; color:var(--gray); margin:0 0 0.2rem;">Registrar Pago</h3>
+                            <p style="font-size:0.82rem; color:#9ca3af; margin:0;">Filtra por proveedor → selecciona una o varias facturas → elige medio de pago → guarda.</p>
+                        </div>
                         <!-- Buscador y selección múltiple de documentos -->
                         <div class="form-group" style="margin-bottom:0.8rem;">
-                            <label style="font-weight:700;">Seleccionar Documentos a Pagar:</label>
-                            <div style="display:grid; grid-template-columns: 1fr 1fr 2fr; gap:0.5rem; margin-bottom:0.8rem;">
+                            <label style="font-weight:700; font-size:0.88rem; color:var(--gray); display:block; margin-bottom:0.5rem;">① Seleccionar Documentos a Pagar:</label>
+                            <div style="display:grid; grid-template-columns: 1fr 1fr 2fr auto; gap:0.5rem; margin-bottom:0.6rem; align-items:center;">
                                 <select id="filtroBuscadorTipo" onchange="filtrarDocumentosPago()" style="width:100%;">
                                     <option value="">— Tipo Doc —</option>
                                     <option value="factura">Factura</option>
@@ -454,6 +457,10 @@
                                     <option value="pagada">✅ Pagada</option>
                                 </select>
                                 <input type="text" id="filtroBuscadorProveedor" placeholder="🔍 Nombre proveedor..." oninput="filtrarDocumentosPago()" style="width:100%;">
+                                <div style="display:flex; gap:0.35rem; align-items:center;">
+                                    <button type="button" onclick="seleccionarTodosVisibles()" title="Seleccionar todos los documentos visibles" style="padding:0.45rem 0.75rem; background:#2563eb; color:white; border:none; border-radius:6px; font-size:0.78rem; font-weight:600; cursor:pointer; white-space:nowrap;">✓ Todos</button>
+                                    <button type="button" onclick="deseleccionarTodos()" title="Deseleccionar todo" style="padding:0.45rem 0.65rem; background:#f3f4f6; color:#6b7280; border:1px solid var(--border); border-radius:6px; font-size:0.78rem; cursor:pointer;">✕</button>
+                                </div>
                             </div>
                             <!-- Tabla con checkboxes - IGUAL QUE MÓDULO FACTURAS -->
                             <table id="resultadosBuscadorPago" class="table" style="margin-top:0.8rem; margin-bottom:0;">
@@ -473,14 +480,15 @@
                                     <tr><td colspan="8" style="text-align:center; color:var(--gray); padding:2rem;">Cargando documentos...</td></tr>
                                 </tbody>
                             </table>
-                            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:0.6rem; flex-wrap:wrap; gap:0.4rem;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:0.5rem; flex-wrap:wrap; gap:0.4rem;">
                                 <div id="infoBuscadorPago" style="font-size:0.82rem; color:var(--gray);"></div>
-                                <div id="resumenSeleccion" style="font-size:0.85rem; font-weight:700; color:var(--primary);"></div>
                             </div>
+                            <div id="resumenSeleccion"></div>
                         </div>
 
                         <!-- Campos de pago -->
                         <div id="pagoFields" class="pago-fields" style="display:block;">
+                            <label style="font-weight:700; font-size:0.88rem; color:var(--gray); display:block; margin-bottom:0.7rem;">② Forma de Pago:</label>
                             <div class="grid-2">
                                 <div class="form-group">
                                     <label>Medio de Pago:</label>
@@ -500,7 +508,7 @@
                             <div id="chequeSection" style="display:none;">
                                 <div class="cheque-section">
                                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.8rem; flex-wrap:wrap; gap:0.5rem;">
-                                        <strong style="font-size:0.9rem;">Detalle de Cheques</strong>
+                                        <strong style="font-size:0.9rem;">📄 Detalle de Cheques (N°, monto y fecha de canje)</strong>
                                         <div id="totalCheques" style="font-size:0.85rem; color:var(--gray);"></div>
                                         <button type="button" class="btn-success" onclick="agregarCheque()">+ Agregar Cheque</button>
                                     </div>
@@ -509,9 +517,9 @@
                             </div>
                         </div>
 
-                        <div style="display:flex; gap:0.5rem; margin-top:1rem;">
-                            <button class="btn btn-primary" onclick="guardarPago()" style="width:auto; padding: 0.8rem 2rem;">💾 Guardar Pago</button>
-                            <button class="btn" onclick="limpiarFormPago()" style="width:auto; padding: 0.8rem 1.5rem; background:#f3f4f6; color:var(--gray);">Limpiar</button>
+                        <div style="display:flex; gap:0.5rem; margin-top:1.2rem; align-items:center; flex-wrap:wrap;">
+                            <button class="btn btn-primary" onclick="guardarPago()" style="width:auto; padding:0.8rem 2rem; font-size:0.95rem;">③ 💾 Guardar Pago</button>
+                            <button class="btn" onclick="limpiarFormPago()" style="width:auto; padding:0.8rem 1.5rem; background:#f3f4f6; color:var(--gray);">🔄 Nueva Operación</button>
                         </div>
                         <div id="pagoMsg"></div>
                     </div>
@@ -1043,18 +1051,67 @@
             actualizarResumenSeleccion();
         }
 
+        function seleccionarTodosVisibles() {
+            const tbody = document.getElementById('resultadosBuscadorPagoBody');
+            if (!tbody) return;
+            tbody.querySelectorAll('input[type="checkbox"][id^="chk_"]').forEach(chk => {
+                const id = parseInt(chk.id.replace('chk_', ''));
+                if (!isNaN(id)) {
+                    chk.checked = true;
+                    if (!facturasSeleccionadas.includes(id)) facturasSeleccionadas.push(id);
+                }
+            });
+            actualizarResumenSeleccion();
+        }
+
+        function deseleccionarTodos() {
+            document.querySelectorAll('#resultadosBuscadorPagoBody input[type="checkbox"]').forEach(chk => chk.checked = false);
+            facturasSeleccionadas = [];
+            actualizarResumenSeleccion();
+        }
+
         function actualizarResumenSeleccion() {
             const resEl = document.getElementById('resumenSeleccion');
             if (!resEl) return;
             if (!facturasSeleccionadas.length) {
-                resEl.textContent = '';
+                resEl.innerHTML = '';
+                actualizarTotalCheques();
                 return;
             }
             const total = facturasSeleccionadas.reduce((s, id) => {
                 const f = facturas.find(x => x.id === id);
                 return s + (f ? f.monto || 0 : 0);
             }, 0);
-            resEl.textContent = `✅ ${facturasSeleccionadas.length} factura${facturasSeleccionadas.length !== 1 ? 's' : ''} seleccionada${facturasSeleccionadas.length !== 1 ? 's' : ''} · Total: $${total.toLocaleString('es-CL')}`;
+
+            // Agrupar por proveedor
+            const porProv = {};
+            facturasSeleccionadas.forEach(id => {
+                const f = facturas.find(x => x.id === id);
+                if (!f) return;
+                const k = f.proveedor || 'Sin nombre';
+                if (!porProv[k]) porProv[k] = { n: 0, monto: 0 };
+                porProv[k].n++;
+                porProv[k].monto += (f.monto || 0);
+            });
+
+            const provLines = Object.entries(porProv).map(([prov, d]) =>
+                `<span style="background:#dbeafe; color:#1e40af; border-radius:4px; padding:0.1rem 0.5rem; font-size:0.8rem; font-weight:600;">${prov}</span>
+                 <span style="font-size:0.8rem; color:#374151;">${d.n} doc${d.n > 1 ? 's' : ''} — $${d.monto.toLocaleString('es-CL')}</span>`
+            ).join('<br>');
+
+            resEl.innerHTML = `<div style="background:#eff6ff; border:1.5px solid #2563eb; border-radius:8px; padding:0.7rem 1rem; margin-top:0.6rem; display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap;">
+                <div>
+                    <div style="font-weight:700; color:#1e40af; font-size:0.92rem; margin-bottom:0.3rem;">✅ ${facturasSeleccionadas.length} documento${facturasSeleccionadas.length !== 1 ? 's' : ''} seleccionado${facturasSeleccionadas.length !== 1 ? 's' : ''}</div>
+                    <div style="display:flex; flex-direction:column; gap:0.25rem;">${provLines}</div>
+                </div>
+                <div style="text-align:right; flex-shrink:0;">
+                    <div style="font-size:0.8rem; color:#6b7280;">Total a pagar</div>
+                    <div style="font-size:1.25rem; font-weight:800; color:#1e40af;">$${total.toLocaleString('es-CL')}</div>
+                    <button type="button" onclick="deseleccionarTodos()" style="margin-top:0.3rem; font-size:0.75rem; background:none; border:none; color:#9ca3af; cursor:pointer; text-decoration:underline;">Deseleccionar todo</button>
+                </div>
+            </div>`;
+
+            actualizarTotalCheques();
         }
 
         function getPeriodoDates(periodo) {
@@ -1824,7 +1881,7 @@
             row.id = `chequeRow_${i}`;
             row.innerHTML = `
                 <div><label>N° Cheque</label><input type="text" id="cn_${i}" placeholder="Ej: 00123456"></div>
-                <div><label>Fecha Cheque</label><input type="date" id="cf_${i}" oninput="actualizarTotalCheques()"></div>
+                <div><label>Fecha de Canje</label><input type="date" id="cf_${i}" oninput="actualizarTotalCheques()"></div>
                 <div><label>Monto Cheque ($)</label><input type="number" id="cm_${i}" placeholder="0" min="0" oninput="actualizarTotalCheques()"></div>
                 <div style="display:flex;align-items:flex-end;"><button type="button" class="btn-danger" onclick="eliminarCheque(${i})">✕</button></div>
             `;
@@ -1882,7 +1939,7 @@
             document.getElementById('chequeSection').style.display = 'none';
             document.getElementById('pagoMsg').innerHTML = '';
             document.getElementById('totalCheques').innerHTML = '';
-            document.getElementById('resumenSeleccion').textContent = '';
+            document.getElementById('resumenSeleccion').innerHTML = '';
             filtrarDocumentosPago();
         }
 
@@ -1998,13 +2055,13 @@
                         const c = p.cheques[0];
                         detalleCheques = `<div style="font-size:0.85rem; line-height:1.5;">
                             <div><b>N° ${c.numero_cheque || '-'}</b></div>
-                            <div style="color:var(--gray);">📅 ${c.fecha_cheque || '-'}</div>
+                            <div style="color:var(--gray);">Canje: ${c.fecha_cheque || '-'}</div>
                             <div style="color:var(--primary); font-weight:600;">$${(c.monto_cheque || 0).toLocaleString('es-CL')}</div>
                         </div>`;
                     } else {
                         const detalleLineas = p.cheques.map(c =>
                             `<div style="padding:0.25rem 0; border-bottom:1px solid #e5e7eb;">
-                                <b>N° ${c.numero_cheque || '-'}</b> — 📅 ${c.fecha_cheque || '-'} — $${(c.monto_cheque || 0).toLocaleString('es-CL')}
+                                <b>N° ${c.numero_cheque || '-'}</b> — Canje: ${c.fecha_cheque || '-'} — $${(c.monto_cheque || 0).toLocaleString('es-CL')}
                             </div>`
                         ).join('');
                         detalleCheques = `<div style="font-size:0.85rem;">

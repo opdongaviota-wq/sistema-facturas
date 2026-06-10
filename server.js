@@ -1,99 +1,109 @@
-import express from 'express';
-import cors from 'cors';
-import pg from 'pg';
-import bcrypt from 'bcryptjs';
-import multer from 'multer';
-import XLSX from 'xlsx';
-import fs from 'fs';
-import path from 'path';
+// v4.5.1 — 2026-06-09
+import express    from 'express';
+import cors       from 'cors';
+import pg         from 'pg';
+import bcrypt     from 'bcryptjs';
+import multer     from 'multer';
+import XLSX       from 'xlsx';
+import fs         from 'fs';
+import path       from 'path';
 import { fileURLToPath } from 'url';
-import * as pdfParse from 'pdf-parse';
+import { createRequire } from 'module';
 
-// Cargar variables de entorno desde .env
-const envPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '.env');
-if (fs.existsSync(envPath)) {
-    const envContent = fs.readFileSync(envPath, 'utf-8');
-    envContent.split('\n').forEach(line => {
-        const match = line.match(/^([^=]+)=(.*)$/);
-        if (match && match[1] && match[1].trim()) {
-            process.env[match[1].trim()] = match[2]?.trim() || '';
-        }
+const require   = createRequire(import.meta.url);
+const pdfParse  = require('pdf-parse');
+
+// ─── Entorno ────────────────────────────────────────────────────────────────
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const envFile   = path.join(__dirname, '.env');
+if (fs.existsSync(envFile)) {
+    fs.readFileSync(envFile, 'utf-8').split('\n').forEach(line => {
+        const m = line.match(/^([^=]+)=(.*)$/);
+        if (m && m[1].trim()) process.env[m[1].trim()] = m[2]?.trim() ?? '';
     });
 }
 
+// ─── DB ─────────────────────────────────────────────────────────────────────
 const { Pool } = pg;
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const app = express();
-const upload = multer({ storage: multer.memoryStorage() });
-
-// Conexión PostgreSQL (Neon en producción, local en desarrollo)
+// Fallback al pooler IPv4 de Supabase si DATABASE_URL no está configurado o apunta a IPv6 directo
+const POOLER_URL = 'postgresql://postgres.lmathqteohlpkefnzjze:Facturas_930@aws-0-sa-east-1.pooler.supabase.com:6543/postgres';
+const rawDbUrl = process.env.DATABASE_URL || POOLER_URL;
+// Si la URL es la directa (IPv6), forzar el pooler
+const dbUrl = (rawDbUrl.includes('db.lmathqteohlpkefnzjze.supabase.co') || rawDbUrl.includes('db.PROJECT'))
+    ? POOLER_URL : rawDbUrl;
 const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
+    connectionString: dbUrl,
+    ssl: { rejectUnauthorized: false },
 });
+
+// ─── App ────────────────────────────────────────────────────────────────────
+const app    = express();
+const upload = multer({ storage: multer.memoryStorage() });
 
 app.use(cors());
 app.use(express.json());
 app.use(express.static(__dirname));
 
-if (!fs.existsSync('uploads')) fs.mkdirSync('uploads');
-
-// ========== CREAR TABLAS ==========
+// ─── Init DB ─────────────────────────────────────────────────────────────────
 async function initDB() {
+    // Facturas — schema completo desde el inicio
     await pool.query(`
         CREATE TABLE IF NOT EXISTS facturas (
-            id        SERIAL PRIMARY KEY,
-            folio     TEXT,
-            fecha     TEXT,
-            proveedor TEXT,
-            monto     INTEGER,
-            estado    TEXT,
-            medio_pago  TEXT,
-            fecha_pago  TEXT,
-            categoria TEXT,
-            created_at  TIMESTAMPTZ DEFAULT NOW()
+            id            SERIAL PRIMARY KEY,
+            folio         TEXT,
+            fecha         TEXT,
+            proveedor     TEXT,
+            rut           TEXT,
+            tipo_doc      TEXT DEFAULT 'Factura',
+            monto         INTEGER DEFAULT 0,
+            estado        TEXT DEFAULT 'pendiente',
+            medio_pago    TEXT,
+            fecha_pago    TEXT,
+            categoria     TEXT,
+            pago_grupo_id TEXT,
+            created_at    TIMESTAMPTZ DEFAULT NOW()
         )
     `);
+    // Columnas que podrían faltar en tablas antiguas
+    const colsFacturas = ['rut','tipo_doc','medio_pago','fecha_pago','categoria','pago_grupo_id'];
+    for (const c of colsFacturas)
+        await pool.query(`ALTER TABLE facturas ADD COLUMN IF NOT EXISTS ${c} TEXT`).catch(() => {});
 
-    // Agregar columna categoria si no existe
-    try {
-        await pool.query(`ALTER TABLE facturas ADD COLUMN categoria TEXT`);
-    } catch (e) {
-        // Columna ya existe, ignorar error
-    }
-
-    await pool.query(`
-        CREATE TABLE IF NOT EXISTS productos (
-            id              SERIAL PRIMARY KEY,
-            folio           TEXT,
-            nombre          TEXT,
-            cantidad        REAL,
-            valor           REAL,
-            proveedor       TEXT,
-            rut_proveedor   TEXT,
-            unidad          TEXT,
-            categoria       TEXT DEFAULT 'Sin categoría',
-            fecha_factura   TEXT,
-            created_at      TIMESTAMPTZ DEFAULT NOW()
-        )
-    `);
-    // Migrar columnas si la tabla ya existía sin ellas
-    const cols = ['proveedor','rut_proveedor','unidad','categoria','fecha_factura'];
-    for (const col of cols) {
-        await pool.query(`ALTER TABLE productos ADD COLUMN IF NOT EXISTS ${col} TEXT`).catch(()=>{});
-    }
-
+    // Cheques
     await pool.query(`
         CREATE TABLE IF NOT EXISTS cheques (
             id             SERIAL PRIMARY KEY,
             factura_id     INTEGER REFERENCES facturas(id) ON DELETE CASCADE,
+            pago_grupo_id  TEXT,
             numero_cheque  TEXT,
             fecha_cheque   TEXT,
-            monto_cheque   INTEGER,
+            monto_cheque   INTEGER DEFAULT 0,
             created_at     TIMESTAMPTZ DEFAULT NOW()
         )
     `);
+    await pool.query(`ALTER TABLE cheques ADD COLUMN IF NOT EXISTS pago_grupo_id TEXT`).catch(() => {});
 
+    // Productos (inventario)
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS productos (
+            id            SERIAL PRIMARY KEY,
+            folio         TEXT,
+            nombre        TEXT,
+            cantidad      REAL DEFAULT 0,
+            valor         REAL DEFAULT 0,
+            unidad        TEXT,
+            categoria     TEXT DEFAULT 'Sin categoría',
+            proveedor     TEXT,
+            rut_proveedor TEXT,
+            fecha_factura TEXT,
+            created_at    TIMESTAMPTZ DEFAULT NOW()
+        )
+    `);
+    const colsProductos = ['proveedor','rut_proveedor','unidad','categoria','fecha_factura'];
+    for (const c of colsProductos)
+        await pool.query(`ALTER TABLE productos ADD COLUMN IF NOT EXISTS ${c} TEXT`).catch(() => {});
+
+    // Usuarios
     await pool.query(`
         CREATE TABLE IF NOT EXISTS usuarios (
             id            SERIAL PRIMARY KEY,
@@ -106,711 +116,577 @@ async function initDB() {
         )
     `);
 
-    // Migraciones (agrega columnas si no existen, ignora error si ya existen)
-    const migraciones = [
-        `ALTER TABLE facturas ADD COLUMN IF NOT EXISTS medio_pago TEXT`,
-        `ALTER TABLE facturas ADD COLUMN IF NOT EXISTS fecha_pago TEXT`,
-        `ALTER TABLE facturas ADD COLUMN IF NOT EXISTS rut TEXT`,
-        `ALTER TABLE facturas ADD COLUMN IF NOT EXISTS tipo_doc TEXT`,
-        `ALTER TABLE facturas ADD COLUMN IF NOT EXISTS pago_grupo_id TEXT`,
-        `ALTER TABLE cheques ADD COLUMN IF NOT EXISTS pago_grupo_id TEXT`,
-    ];
-    for (const sql of migraciones) {
-        await pool.query(sql).catch(() => {});
-    }
-
-    // Seed: crear admin por defecto si no hay usuarios
-    const count = await pool.query('SELECT COUNT(*) FROM usuarios');
-    if (parseInt(count.rows[0].count) === 0) {
+    // Seed admin por defecto
+    const { rows } = await pool.query('SELECT COUNT(*) FROM usuarios');
+    if (parseInt(rows[0].count) === 0) {
         const hash = await bcrypt.hash('admin123', 10);
         await pool.query(
             'INSERT INTO usuarios (nombre, email, password_hash, rol) VALUES ($1,$2,$3,$4)',
             ['Administrador', 'usuario1@empresa.com', hash, 'admin']
         );
-        console.log('✅ Usuario admin creado por defecto');
+        console.log('✅ Admin por defecto creado');
     }
-
-    console.log('✅ Tablas listas');
+    console.log('✅ Base de datos lista');
 }
 
-initDB().catch(err => console.error('❌ Error iniciando DB:', err.message));
+initDB().catch(err => {
+    console.error('❌ Error initDB:', err.message);
+    process.exit(1);   // Falla rápido si la DB no está disponible
+});
 
-// ========== RUTAS ==========
+// ═══════════════════════════════════════════════════════════════════════════════
+//  HEALTH CHECK
+// ═══════════════════════════════════════════════════════════════════════════════
+app.get('/api/health', async (_req, res) => {
+    try {
+        const { rows } = await pool.query('SELECT COUNT(*) as total FROM facturas');
+        res.json({ status: 'ok', facturas: parseInt(rows[0].total), timestamp: new Date().toISOString() });
+    } catch (e) {
+        res.status(500).json({ status: 'error', message: e.message });
+    }
+});
 
-// LOGIN
+// ═══════════════════════════════════════════════════════════════════════════════
+//  AUTH
+// ═══════════════════════════════════════════════════════════════════════════════
 app.post('/api/auth/login', async (req, res) => {
     const { email, password } = req.body;
     try {
-        const result = await pool.query(
+        const { rows } = await pool.query(
             'SELECT * FROM usuarios WHERE email=$1 AND activo=true',
             [email.toLowerCase().trim()]
         );
-        if (!result.rows.length)
+        if (!rows.length)
             return res.json({ success: false, message: 'Email o contraseña incorrectos' });
-
-        const user = result.rows[0];
-        const match = await bcrypt.compare(password, user.password_hash);
-        if (!match)
+        const ok = await bcrypt.compare(password, rows[0].password_hash);
+        if (!ok)
             return res.json({ success: false, message: 'Email o contraseña incorrectos' });
-
-        res.json({
-            success: true,
-            token: 'token_' + Date.now(),
-            user: { id: user.id, email: user.email, nombre: user.nombre, rol: user.rol }
-        });
-    } catch (err) {
-        res.json({ success: false, error: err.message });
-    }
+        const u = rows[0];
+        res.json({ success: true, token: 'token_' + Date.now(),
+            user: { id: u.id, email: u.email, nombre: u.nombre, rol: u.rol } });
+    } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
-// GET FACTURAS
+// ═══════════════════════════════════════════════════════════════════════════════
+//  FACTURAS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// GET — lista con filtros opcionales
 app.get('/api/facturas', async (req, res) => {
+    const { estado, proveedor, tipo_doc, fecha_desde, fecha_hasta, rut } = req.query;
+    let sql    = 'SELECT * FROM facturas WHERE 1=1';
+    const params = [];
+    let i = 1;
+
+    // estado 'pagada' está en DB; los demás (pendiente/por_vencer/vencida) son calculados
+    // → solo filtramos por estado si es 'pagada' o 'pendiente' (no pagada)
+    if (estado === 'pagada')
+        { sql += ` AND estado='pagada'`; }
+    else if (estado === 'pendiente' || estado === 'por_vencer' || estado === 'vencida')
+        { sql += ` AND (estado IS NULL OR estado!='pagada')`; }
+
+    if (proveedor)   { sql += ` AND proveedor  ILIKE $${i++}`; params.push(`%${proveedor}%`); }
+    if (tipo_doc)    { sql += ` AND tipo_doc   ILIKE $${i++}`; params.push(`%${tipo_doc}%`); }
+    if (rut)         { sql += ` AND rut        ILIKE $${i++}`; params.push(`%${rut}%`); }
+    if (fecha_desde) { sql += ` AND fecha      >= $${i++}`;    params.push(fecha_desde); }
+    if (fecha_hasta) { sql += ` AND fecha      <= $${i++}`;    params.push(fecha_hasta); }
+
+    sql += ' ORDER BY created_at DESC';
+
     try {
-        const result = await pool.query('SELECT * FROM facturas ORDER BY created_at DESC');
-        res.json({ success: true, facturas: result.rows });
-    } catch (err) {
-        res.json({ success: false, error: err.message });
-    }
+        const { rows } = await pool.query(sql, params);
+        res.json({ success: true, facturas: rows });
+    } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
-// POST FACTURA
+// POST — crear factura individual
 app.post('/api/facturas', async (req, res) => {
     const { folio, fecha, proveedor, rut, tipo_doc, monto, estado } = req.body;
-    if (!folio || !monto) {
+    if (!folio || !monto)
         return res.json({ success: false, message: 'Folio y monto son requeridos' });
-    }
     try {
-        const result = await pool.query(
-            'INSERT INTO facturas (folio, fecha, proveedor, rut, tipo_doc, monto, estado) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id',
-            [folio, fecha, proveedor, rut || null, tipo_doc || null, monto, estado || 'pendiente']
+        const { rows } = await pool.query(
+            'INSERT INTO facturas (folio,fecha,proveedor,rut,tipo_doc,monto,estado) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id',
+            [folio, fecha, proveedor, rut||null, tipo_doc||'Factura', monto, estado||'pendiente']
         );
-        res.json({ success: true, id: result.rows[0].id });
-    } catch (err) {
-        res.json({ success: false, error: err.message });
-    }
+        res.json({ success: true, id: rows[0].id });
+    } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
-// UPDATE FACTURA
+// PUT — actualizar factura (estado, pago, categoría)
 app.put('/api/facturas/:id', async (req, res) => {
     const { estado, medio_pago, fecha_pago, categoria } = req.body;
-    const medioPago = estado === 'pagada' ? (medio_pago || null) : null;
-    const fechaPago = estado === 'pagada' ? (fecha_pago || null) : null;
+    const sets   = ['estado=$1'];
+    const params = [estado];
+    let   idx    = 2;
+
+    sets.push(`medio_pago=$${idx++}`);
+    params.push(estado === 'pagada' ? (medio_pago || null) : null);
+
+    sets.push(`fecha_pago=$${idx++}`);
+    params.push(estado === 'pagada' ? (fecha_pago || null) : null);
+
+    if (categoria !== undefined) { sets.push(`categoria=$${idx++}`); params.push(categoria||null); }
+
+    params.push(req.params.id);
     try {
-        let query = 'UPDATE facturas SET estado=$1, medio_pago=$2, fecha_pago=$3';
-        const params = [estado, medioPago, fechaPago];
-        let paramIdx = 4;
-
-        if (categoria !== undefined) {
-            query += `, categoria=$${paramIdx++}`;
-            params.push(categoria || null);
-        }
-
-        query += ` WHERE id=$${paramIdx}`;
-        params.push(req.params.id);
-
-        await pool.query(query, params);
+        await pool.query(`UPDATE facturas SET ${sets.join(',')} WHERE id=$${idx}`, params);
         res.json({ success: true });
-    } catch (err) {
-        res.json({ success: false, error: err.message });
-    }
+    } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
-// DELETE ALL FACTURAS (limpiar base — debe estar ANTES de /:id)
-app.delete('/api/facturas/all', async (req, res) => {
-    try {
-        const result = await pool.query('DELETE FROM facturas');
-        res.json({ success: true, eliminadas: result.rowCount });
-    } catch (err) {
-        res.json({ success: false, error: err.message });
-    }
-});
-
-// DELETE FACTURA
+// DELETE — una factura
 app.delete('/api/facturas/:id', async (req, res) => {
     try {
         await pool.query('DELETE FROM facturas WHERE id=$1', [req.params.id]);
         res.json({ success: true });
-    } catch (err) {
-        res.json({ success: false, error: err.message });
-    }
+    } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
-// ========== PARSEAR PDF FACTURA ==========
-function categorizarProducto(nombre) {
-    const n = nombre.toLowerCase();
-    if (/ostra|salmón|salmon|merluza|mariscos?|calamar|camarón|camaron|congrio|atun|atún|pescado|pulpo|jaiba|centolla|erizo|cholga|almeja|navajuela|reineta|lenguado|trucha/.test(n)) return 'Pescados y Mariscos';
-    if (/cerveza|vino|bebida|jugo|agua|pisco|ron|vodka|whisky|champagne|espumante|refresco|licor|cóctel|coctel/.test(n)) return 'Líquidos';
-    if (/congelad|frozen/.test(n)) return 'Congelados';
-    if (/tomate|lechuga|cebolla|papa|zanahoria|manzana|palta|limón|limon|naranja|pera|uva|berr|fruta|verdura|vegetal|brocoli|espinaca|pepino|ajo|pimiento|coliflor/.test(n)) return 'Frutas y Verduras';
-    if (/cloro|detergente|esponja|escoba|trapo|limpiador|jabón|jabon|desinfect|papel higiénico|papel higienico|servilleta|toalla|basura|bolsa/.test(n)) return 'Aseo';
-    if (/servicio|mantención|manten|arriendo|instalación|instalacion|reparación|reparacion|asesoría|asesoria|consultora|mano de obra/.test(n)) return 'Servicios';
-    return 'Abarrotes';
-}
-
-function parsearTextoPDF(text) {
-    const lines = text.split(/\n/).map(l => l.trim()).filter(Boolean);
-    const fullText = lines.join(' ');
-
-    // Extraer proveedor: primera cadena de MAYÚSCULAS antes de doble espacio o giro/dirección
-    const provMatch = fullText.match(/^([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s\.\,]{4,80}?)\s{2,}/);
-    const proveedor = provMatch ? provMatch[1].trim() : fullText.substring(0, 60).trim();
-
-    // RUT proveedor
-    const rutMatch = fullText.match(/R\.?U\.?T\.?\s*[:\s]*(\d{7,8}-[\dkK])/i);
-    const rutProveedor = rutMatch ? rutMatch[1] : '';
-
-    // Folio
-    const folioMatch = fullText.match(/N[°º]\s*([\d\.]+)/i);
-    const folio = folioMatch ? folioMatch[1].replace(/\./g, '') : '';
-
-    // Fecha
-    const fechaMatch = fullText.match(/(\d{1,2})\s+de\s+(\w+)\s+de\s+(\d{4})/i);
-    let fecha = '';
-    if (fechaMatch) {
-        const meses = {enero:'01',febrero:'02',marzo:'03',abril:'04',mayo:'05',junio:'06',julio:'07',agosto:'08',septiembre:'09',octubre:'10',noviembre:'11',diciembre:'12'};
-        const mes = meses[fechaMatch[2].toLowerCase()] || '01';
-        fecha = `${fechaMatch[3]}-${mes}-${fechaMatch[1].padStart(2,'0')}`;
-    }
-
-    // Ítems: buscar el bloque entre "DETALLE" y "REFERENCIAS"/"Sub-Total"
-    const itemsRaw = [];
-    const detBloque = fullText.match(/CODIGO\s+CANTIDAD\s+DETALLE\s+UNIDAD\s+P\.\s*UNITARIO\s+TOTAL(.+?)(?:REFERENCIAS|Sub-Total)/is);
-    if (detBloque) {
-        const bloque = detBloque[1];
-        // Patrón: (cantidad) (descripción) (unidad) $ precio $ total
-        const lineaRegex = /([\d.,]+)\s+([A-ZÁÉÍÓÚÑ][^$]+?)\s+(UNID|KG|LT|UN|MT|CAJA|BOLSA|SACO|DOC|PAQ)\s+\$\s*([\d.,]+)\s+\$\s*([\d.,]+)/gi;
-        let m;
-        while ((m = lineaRegex.exec(bloque)) !== null) {
-            const cant = parseFloat(m[1].replace(/\./g,'').replace(',','.'));
-            const nombre = m[2].trim();
-            const unidad = m[3].trim();
-            const valorUnit = parseFloat(m[4].replace(/\./g,'').replace(',','.'));
-            const total = parseFloat(m[5].replace(/\./g,'').replace(',','.'));
-            itemsRaw.push({ nombre, cantidad: cant, unidad, valor_unitario: valorUnit, total, categoria: categorizarProducto(nombre) });
-        }
-        // Fallback: líneas sin unidad explícita
-        if (!itemsRaw.length) {
-            const fallback = /([\d.,]+)\s+([A-ZÁÉÍÓÚÑ][^$]+?)\s+\$\s*([\d.,]+)\s+\$\s*([\d.,]+)/gi;
-            let fm;
-            while ((fm = fallback.exec(bloque)) !== null) {
-                const cant = parseFloat(fm[1].replace(/\./g,'').replace(',','.'));
-                const nombre = fm[2].trim();
-                const valorUnit = parseFloat(fm[3].replace(/\./g,'').replace(',','.'));
-                itemsRaw.push({ nombre, cantidad: cant, unidad: 'UNID', valor_unitario: valorUnit, total: parseFloat(fm[4].replace(/\./g,'').replace(',','.')), categoria: categorizarProducto(nombre) });
-            }
-        }
-    }
-
-    // Monto total
-    const montoMatch = fullText.match(/Monto Total\s+\$\s*([\d.,]+)/i);
-    const montoTotal = montoMatch ? parseFloat(montoMatch[1].replace(/\./g,'').replace(',','.')) : 0;
-
-    return { proveedor, rut_proveedor: rutProveedor, folio, fecha, items: itemsRaw, monto_total: montoTotal };
-}
-
-app.post('/api/inventario/parsear-pdf', upload.single('pdf'), async (req, res) => {
+// DELETE ALL — limpiar tabla (requiere header de confirmación)
+app.delete('/api/facturas', async (req, res) => {
+    if (req.headers['x-confirm-delete'] !== 'BORRAR-TODO')
+        return res.status(403).json({ success: false, message: 'Header de confirmación requerido' });
     try {
-        if (!req.file) return res.json({ success: false, error: 'No se recibió archivo PDF' });
-        const pdfData = await pdfParse(req.file.buffer);
-        const text = pdfData.text;
-        const resultado = parsearTextoPDF(text);
-        res.json({ success: true, ...resultado, texto_raw: text });
-    } catch (err) {
-        res.json({ success: false, error: err.message });
-    }
+        const { rowCount } = await pool.query('DELETE FROM facturas');
+        await pool.query('DELETE FROM cheques');
+        res.json({ success: true, eliminadas: rowCount });
+    } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
-// GUARDAR ITEMS DE INVENTARIO DESDE PDF
-app.post('/api/inventario/guardar-items', async (req, res) => {
-    const { items } = req.body;
-    try {
-        let insertados = 0;
-        for (const item of items) {
-            await pool.query(
-                `INSERT INTO productos (folio, nombre, cantidad, valor, proveedor, rut_proveedor, unidad, categoria, fecha_factura)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-                [item.folio, item.nombre, item.cantidad, item.valor_unitario, item.proveedor, item.rut_proveedor, item.unidad, item.categoria, item.fecha_factura]
-            );
-            insertados++;
-        }
-        res.json({ success: true, insertados });
-    } catch (err) {
-        res.json({ success: false, error: err.message });
-    }
-});
+// ═══════════════════════════════════════════════════════════════════════════════
+//  PAGOS
+// ═══════════════════════════════════════════════════════════════════════════════
 
-// DELETE PRODUCTO
-app.delete('/api/productos/:id', async (req, res) => {
-    try {
-        await pool.query('DELETE FROM productos WHERE id=$1', [req.params.id]);
-        res.json({ success: true });
-    } catch (err) {
-        res.json({ success: false, error: err.message });
-    }
-});
-
-// GET PRODUCTOS
-app.get('/api/productos', async (req, res) => {
-    try {
-        const result = await pool.query('SELECT * FROM productos ORDER BY created_at DESC');
-        res.json({ success: true, productos: result.rows });
-    } catch (err) {
-        res.json({ success: false, error: err.message });
-    }
-});
-
-// POST PRODUCTO
-app.post('/api/productos', async (req, res) => {
-    const { folio, nombre, cantidad, valor } = req.body;
-    try {
-        const result = await pool.query(
-            'INSERT INTO productos (folio, nombre, cantidad, valor) VALUES ($1,$2,$3,$4) RETURNING id',
-            [folio, nombre, cantidad, valor]
-        );
-        res.json({ success: true, id: result.rows[0].id });
-    } catch (err) {
-        res.json({ success: false, error: err.message });
-    }
-});
-
-// POST PAGO AGRUPADO (múltiples facturas + múltiples cheques)
+// POST — registrar pago (individual o agrupado, con cheques opcionales)
 app.post('/api/pagos/grupo', async (req, res) => {
     const { factura_ids, medio_pago, fecha_pago, cheques } = req.body;
-    if (!factura_ids || !factura_ids.length) return res.json({ success: false, error: 'Debes seleccionar al menos una factura' });
-    if (!fecha_pago) return res.json({ success: false, error: 'Fecha de pago requerida' });
+    if (!factura_ids?.length) return res.json({ success: false, error: 'Selecciona al menos una factura' });
+    if (!fecha_pago)          return res.json({ success: false, error: 'Fecha de pago requerida' });
 
-    const grupoId = `G-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-
+    const grupoId = `G-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
     try {
         for (const id of factura_ids) {
             await pool.query(
-                'UPDATE facturas SET estado=$1, medio_pago=$2, fecha_pago=$3, pago_grupo_id=$4 WHERE id=$5',
-                ['pagada', medio_pago || 'transferencia', fecha_pago, grupoId, id]
+                `UPDATE facturas SET estado='pagada', medio_pago=$1, fecha_pago=$2, pago_grupo_id=$3 WHERE id=$4`,
+                [medio_pago || 'transferencia', fecha_pago, grupoId, id]
             );
         }
-        if (medio_pago === 'cheque' && cheques && cheques.length) {
+        if (medio_pago === 'cheque' && cheques?.length) {
             for (const c of cheques) {
-                // El cheque se asocia al grupo y al primer factura_id para compatibilidad
                 await pool.query(
-                    'INSERT INTO cheques (factura_id, pago_grupo_id, numero_cheque, fecha_cheque, monto_cheque) VALUES ($1,$2,$3,$4,$5)',
-                    [factura_ids[0], grupoId, c.numero_cheque || '', c.fecha_cheque || '', c.monto_cheque || 0]
+                    `INSERT INTO cheques (factura_id, pago_grupo_id, numero_cheque, fecha_cheque, monto_cheque)
+                     VALUES ($1,$2,$3,$4,$5)`,
+                    [factura_ids[0], grupoId, c.numero_cheque||'', c.fecha_cheque||'', c.monto_cheque||0]
                 );
             }
         }
         res.json({ success: true, pago_grupo_id: grupoId });
-    } catch (err) {
-        res.json({ success: false, error: err.message });
-    }
+    } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
-// GET PAGOS con filtros (facturas pagadas + cheques embebidos, agrupados por pago_grupo_id)
+// GET — pagos registrados con filtros + cheques embebidos
 app.get('/api/pagos', async (req, res) => {
-    const { medio_pago, fecha_desde, fecha_hasta } = req.query;
-    let query = "SELECT * FROM facturas WHERE estado='pagada'";
+    const { proveedor, medio_pago, fecha_desde, fecha_hasta } = req.query;
+    let sql    = `SELECT * FROM facturas WHERE estado='pagada'`;
     const params = [];
     let i = 1;
 
-    if (medio_pago)  { query += ` AND medio_pago=$${i++}`;   params.push(medio_pago); }
-    if (fecha_desde) { query += ` AND fecha_pago>=$${i++}`;  params.push(fecha_desde); }
-    if (fecha_hasta) { query += ` AND fecha_pago<=$${i++}`;  params.push(fecha_hasta); }
-    query += ' ORDER BY fecha_pago DESC, created_at DESC';
+    if (proveedor)   { sql += ` AND proveedor ILIKE $${i++}`;  params.push(`%${proveedor}%`); }
+    if (medio_pago)  { sql += ` AND medio_pago = $${i++}`;     params.push(medio_pago); }
+    if (fecha_desde) { sql += ` AND fecha_pago >= $${i++}`;    params.push(fecha_desde); }
+    if (fecha_hasta) { sql += ` AND fecha_pago <= $${i++}`;    params.push(fecha_hasta); }
+    sql += ' ORDER BY fecha_pago DESC, created_at DESC';
 
     try {
-        const facturasResult = await pool.query(query, params);
-        const facturas = facturasResult.rows;
+        const { rows: facturas } = await pool.query(sql, params);
         if (!facturas.length) return res.json({ success: true, pagos: [] });
 
-        const ids = facturas.map(f => f.id);
-        const placeholders = ids.map((_, idx) => `$${idx + 1}`).join(',');
-        const chequesResult = await pool.query(
-            `SELECT * FROM cheques WHERE factura_id IN (${placeholders}) OR pago_grupo_id IN (
-                SELECT DISTINCT pago_grupo_id FROM facturas WHERE id IN (${placeholders}) AND pago_grupo_id IS NOT NULL
-            ) ORDER BY created_at`,
+        // Traer cheques de todas las facturas encontradas (por factura_id o pago_grupo_id)
+        const ids   = facturas.map(f => f.id);
+        const ph1   = ids.map((_,k)       => `$${k+1}`).join(',');
+        const ph2   = ids.map((_,k)       => `$${ids.length+k+1}`).join(',');
+        const { rows: cheques } = await pool.query(
+            `SELECT * FROM cheques
+             WHERE factura_id IN (${ph1})
+                OR pago_grupo_id IN (
+                    SELECT DISTINCT pago_grupo_id FROM facturas
+                    WHERE id IN (${ph2}) AND pago_grupo_id IS NOT NULL
+                )
+             ORDER BY created_at`,
             [...ids, ...ids]
         );
-        const cheques = chequesResult.rows;
 
-        // Agrupar facturas con mismo pago_grupo_id
-        const grupos = {};
+        // Agrupar por pago_grupo_id
+        const grupos   = {};
         const sinGrupo = [];
         for (const f of facturas) {
-            if (f.pago_grupo_id) {
-                if (!grupos[f.pago_grupo_id]) grupos[f.pago_grupo_id] = [];
-                grupos[f.pago_grupo_id].push(f);
-            } else {
-                sinGrupo.push(f);
-            }
+            f.pago_grupo_id
+                ? (grupos[f.pago_grupo_id] ??= []).push(f)
+                : sinGrupo.push(f);
         }
 
         const pagos = [];
 
-        // Pagos agrupados: un registro por grupo
-        for (const [grupoId, grpFacturas] of Object.entries(grupos)) {
-            const primera = grpFacturas[0];
-            const chequesGrupo = cheques.filter(c => c.pago_grupo_id === grupoId);
+        for (const [gid, gFacturas] of Object.entries(grupos)) {
+            const chequesGrupo = cheques.filter(c => c.pago_grupo_id === gid);
             pagos.push({
-                pago_grupo_id: grupoId,
-                facturas: grpFacturas.map(f => ({ id: f.id, folio: f.folio, proveedor: f.proveedor, monto: f.monto, tipo_doc: f.tipo_doc })),
-                folio: grpFacturas.map(f => f.folio).join(', '),
-                proveedor: [...new Set(grpFacturas.map(f => f.proveedor))].join(', '),
-                monto: grpFacturas.reduce((s, f) => s + (f.monto || 0), 0),
-                medio_pago: primera.medio_pago,
-                fecha_pago: primera.fecha_pago,
-                cheques: chequesGrupo,
-                es_grupo: true,
-                cantidad_facturas: grpFacturas.length,
+                pago_grupo_id:      gid,
+                folio:              gFacturas.map(f => f.folio).join(', '),
+                proveedor:          [...new Set(gFacturas.map(f => f.proveedor))].join(', '),
+                monto:              gFacturas.reduce((s,f) => s+(f.monto||0), 0),
+                medio_pago:         gFacturas[0].medio_pago,
+                fecha_pago:         gFacturas[0].fecha_pago,
+                cheques:            chequesGrupo,
+                facturas:           gFacturas.map(f => ({ id:f.id, folio:f.folio, proveedor:f.proveedor, monto:f.monto })),
+                es_grupo:           true,
+                cantidad_facturas:  gFacturas.length,
             });
         }
 
-        // Pagos individuales (sin grupo)
         for (const f of sinGrupo) {
             pagos.push({
                 ...f,
-                cheques: cheques.filter(c => c.factura_id === f.id && !c.pago_grupo_id),
-                es_grupo: false,
+                cheques:           cheques.filter(c => c.factura_id === f.id && !c.pago_grupo_id),
+                es_grupo:          false,
                 cantidad_facturas: 1,
             });
         }
 
-        // Ordenar por fecha_pago desc
-        pagos.sort((a, b) => (b.fecha_pago || '').localeCompare(a.fecha_pago || ''));
+        pagos.sort((a,b) => (b.fecha_pago||'').localeCompare(a.fecha_pago||''));
         res.json({ success: true, pagos });
-    } catch (err) {
-        res.json({ success: false, error: err.message });
-    }
+    } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
-// GET CHEQUES por factura
-app.get('/api/cheques/:facturaId', async (req, res) => {
-    try {
-        const result = await pool.query(
-            'SELECT * FROM cheques WHERE factura_id=$1 ORDER BY created_at',
-            [req.params.facturaId]
-        );
-        res.json({ success: true, cheques: result.rows });
-    } catch (err) {
-        res.json({ success: false, error: err.message });
-    }
-});
+// ═══════════════════════════════════════════════════════════════════════════════
+//  CHEQUES
+// ═══════════════════════════════════════════════════════════════════════════════
 
-// POST CHEQUES (reemplaza todos los cheques de una factura)
-app.post('/api/cheques/:facturaId', async (req, res) => {
-    const { cheques } = req.body;
-    const facturaId = req.params.facturaId;
+// GET — reporte flujo de cheques (para módulo reportes)
+app.get('/api/cheques/reporte/flujo', async (_req, res) => {
     try {
-        await pool.query('DELETE FROM cheques WHERE factura_id=$1', [facturaId]);
-        for (const c of (cheques || [])) {
-            await pool.query(
-                'INSERT INTO cheques (factura_id, numero_cheque, fecha_cheque, monto_cheque) VALUES ($1,$2,$3,$4)',
-                [facturaId, c.numero_cheque || '', c.fecha_cheque || '', c.monto_cheque || 0]
-            );
-        }
-        res.json({ success: true });
-    } catch (err) {
-        res.json({ success: false, error: err.message });
-    }
-});
-
-// GET REPORTE DE CHEQUES EMITIDOS
-app.get('/api/cheques/reporte/flujo', async (req, res) => {
-    try {
-        const result = await pool.query(`
-            SELECT
-                ch.id,
-                ch.numero_cheque,
-                ch.fecha_cheque,
-                ch.monto_cheque,
-                f.proveedor,
-                f.rut,
-                f.id as factura_id,
-                f.folio
+        const { rows } = await pool.query(`
+            SELECT ch.id, ch.numero_cheque, ch.fecha_cheque, ch.monto_cheque,
+                   ch.pago_grupo_id, f.proveedor, f.rut, f.id AS factura_id, f.folio
             FROM cheques ch
             LEFT JOIN facturas f ON ch.factura_id = f.id
             WHERE ch.numero_cheque IS NOT NULL AND ch.numero_cheque != ''
             ORDER BY ch.fecha_cheque ASC, ch.numero_cheque ASC
         `);
-
         const hoy = new Date();
-        const cheques = result.rows.map(c => {
-            let estado = 'pendiente';
-            let dias = 0;
-
+        const cheques = rows.map(c => {
+            let estado = 'pendiente', dias = 0;
             if (c.fecha_cheque) {
-                const fechaCheque = new Date(c.fecha_cheque + 'T00:00:00');
-                dias = Math.floor((fechaCheque - hoy) / (1000 * 60 * 60 * 24));
-
-                if (dias < 0) {
-                    estado = 'vencida';
-                } else if (dias <= 5) {
-                    estado = 'por_vencer';
-                } else {
-                    estado = 'pendiente';
-                }
+                dias   = Math.floor((new Date(c.fecha_cheque+'T00:00:00') - hoy) / 86400000);
+                estado = dias < 0 ? 'vencida' : dias <= 5 ? 'por_vencer' : 'pendiente';
             }
-
-            return {
-                ...c,
-                estado,
-                dias
-            };
+            return { ...c, estado, dias };
         });
-
         res.json({ success: true, cheques });
-    } catch (err) {
-        res.json({ success: false, error: err.message });
-    }
+    } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
-// Búsqueda flexible de columna en una fila de Excel
-// Ignora mayúsculas/minúsculas, tildes, espacios extra y no-breaking spaces
+// GET — cheques de una factura específica
+app.get('/api/cheques/:facturaId', async (req, res) => {
+    try {
+        const { rows } = await pool.query(
+            'SELECT * FROM cheques WHERE factura_id=$1 ORDER BY created_at',
+            [req.params.facturaId]
+        );
+        res.json({ success: true, cheques: rows });
+    } catch (e) { res.json({ success: false, error: e.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  EXCEL IMPORT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function norm(s) {
+    return String(s).normalize('NFD').replace(/[̀-ͯ]/g,'')
+                    .toLowerCase().replace(/\s+/g,' ').trim();
+}
 function getCol(row, ...keys) {
-    // 1) Match exacto
     for (const k of keys) {
         const v = row[k];
         if (v !== undefined && v !== null && String(v).trim() !== '') return v;
     }
-    // 2) Match normalizado (sin tildes, todo minúscula, espacios simples)
-    const norm = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '')
-                        .toLowerCase().replace(/[ \s]+/g, ' ').trim();
     const normKeys = keys.map(norm);
-    for (const rowKey of Object.keys(row)) {
-        if (normKeys.includes(norm(rowKey))) return row[rowKey];
+    for (const rk of Object.keys(row)) {
+        if (normKeys.includes(norm(rk))) return row[rk];
     }
     return undefined;
 }
 
-// UPLOAD EXCEL
 app.post('/api/upload/excel', upload.single('file'), async (req, res) => {
+    if (!req.file) return res.json({ success: false, error: 'No se recibió archivo' });
     try {
-        // Obtener tipo de documento del formulario (Factura, Gasto, u Otro)
         const tipoDocFormulario = req.body.tipo_doc || '';
+        const wb   = XLSX.read(req.file.buffer, { type: 'buffer' });
+        const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
 
-        const workbook = XLSX.read(req.file.buffer || fs.readFileSync(req.file.path), { type: 'buffer' });
-        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-        const data = XLSX.utils.sheet_to_json(worksheet);
-
-        const facturas = data.map(row => {
-            // Fecha de emisión — acepta variantes con/sin tilde, con/sin espacio
-            const fechaRaw = getCol(row,
-                'F. Emision', 'F. Emisión', 'F.Emision', 'F.Emisión',
-                'Fecha Emision', 'Fecha Emisión', 'fecha_emision', 'FechaEmision'
-            ) || '';
+        const filas = data.map(row => {
+            const fechaRaw = getCol(row,'F. Emision','F. Emisión','F.Emision','F.Emisión',
+                                        'Fecha Emision','Fecha Emisión','fecha_emision') || '';
             let fecha = fechaRaw;
-            if (typeof fecha === 'number') {
-                const d = new Date((fecha - 25569) * 86400 * 1000);
-                fecha = d.toISOString().split('T')[0];
-            } else {
-                fecha = String(fecha).split(' ')[0];
-            }
-            // RUT — acepta variantes de capitalización
-            const rut = String(getCol(row,
-                'Rut', 'RUT', 'rut', 'R.U.T.', 'R.U.T',
-                'Rut Proveedor', 'RUT Proveedor'
-            ) || '').trim();
+            if (typeof fecha === 'number')
+                fecha = new Date((fecha-25569)*86400*1000).toISOString().split('T')[0];
+            else
+                fecha = String(fecha).split(' ')[0].trim();
 
-            // Si viene tipo_doc del formulario, usarlo; sino, del Excel
-            const tipoDocExcel = String(getCol(row, 'Tipo Doc', 'Tipo Doc.', 'tipo_doc', 'TipoDoc', 'Tipo de Documento', 'Tipo') || '').trim();
-            const tipoDocFinal = tipoDocFormulario || tipoDocExcel || 'Factura';
-
+            const tipoDocExcel = String(getCol(row,'Tipo Doc','Tipo Doc.','tipo_doc','Tipo') || '').trim();
             return {
-                tipo_doc:  tipoDocFinal,
-                folio:     String(getCol(row, 'Folio', 'folio', 'FOLIO', 'N° Folio', 'Nro. Folio') || '').trim(),
-                fecha:     fecha.trim(),
-                proveedor: String(getCol(row, 'Nombre', 'nombre', 'NOMBRE', 'Razón Social', 'Razon Social') || '').trim(),
-                rut:       rut,
-                monto:     parseInt(String(getCol(row, 'Total', 'total', 'TOTAL', 'Monto', 'Monto Total') || 0).replace(/[^0-9]/g, '')) || 0,
+                tipo_doc:  tipoDocFormulario || tipoDocExcel || 'Factura',
+                folio:     String(getCol(row,'Folio','folio','FOLIO','N° Folio') || '').trim(),
+                fecha,
+                proveedor: String(getCol(row,'Nombre','nombre','NOMBRE','Razón Social','Razon Social') || '').trim(),
+                rut:       String(getCol(row,'Rut','RUT','rut','R.U.T.') || '').trim(),
+                monto:     parseInt(String(getCol(row,'Total','total','TOTAL','Monto') || 0).replace(/[^0-9]/g,'')) || 0,
             };
         }).filter(f => f.folio && f.monto > 0);
 
-        // Obtener folios existentes para evitar duplicados (conserva datos anteriores)
-        const existingResult = await pool.query('SELECT folio FROM facturas');
-        const existingFolios = new Set(existingResult.rows.map(r => r.folio));
+        const { rows: exist } = await pool.query('SELECT folio FROM facturas');
+        const foliosExist     = new Set(exist.map(r => r.folio));
 
-        let insertadas = 0, omitidas = 0, rutActualizadas = 0;
-        for (const f of facturas) {
-            if (existingFolios.has(f.folio)) {
-                // Folio ya existe: completar campos vacíos (rut, proveedor, fecha)
-                const setClauses = [];
-                const params     = [];
-                let   pi         = 1;
-                if (f.rut)       { setClauses.push(`rut=$${pi++}`);       params.push(f.rut); }
-                if (f.tipo_doc)  { setClauses.push(`tipo_doc=$${pi++}`);  params.push(f.tipo_doc); }
-                if (f.proveedor) { setClauses.push(`proveedor=$${pi++}`); params.push(f.proveedor); }
-                if (f.fecha)     { setClauses.push(`fecha=$${pi++}`);     params.push(f.fecha); }
-                if (setClauses.length) {
-                    params.push(f.folio);
-                    // Solo actualiza si el campo correspondiente está vacío
-                    const whereRut  = f.rut       ? "(rut IS NULL OR rut='')"              : null;
-                    const whereTipo = f.tipo_doc  ? "(tipo_doc IS NULL OR tipo_doc='')"    : null;
-                    const whereProv = f.proveedor ? "(proveedor IS NULL OR proveedor='')"  : null;
-                    const whereFech = f.fecha     ? "(fecha IS NULL OR fecha='')"          : null;
-                    const whereCond = [whereRut, whereTipo, whereProv, whereFech].filter(Boolean).join(' OR ');
-                    const upd = await pool.query(
-                        `UPDATE facturas SET ${setClauses.join(',')} WHERE folio=$${pi} AND (${whereCond})`,
-                        params
-                    ).catch(() => ({ rowCount: 0 }));
-                    if (upd.rowCount > 0) rutActualizadas++;
+        let insertadas = 0, omitidas = 0, actualizadas = 0;
+        for (const f of filas) {
+            if (foliosExist.has(f.folio)) {
+                // Completar campos vacíos en registro existente
+                const sets = []; const prms = []; let pi = 1;
+                if (f.rut)       { sets.push(`rut=$${pi++}`);       prms.push(f.rut); }
+                if (f.tipo_doc)  { sets.push(`tipo_doc=$${pi++}`);  prms.push(f.tipo_doc); }
+                if (f.proveedor) { sets.push(`proveedor=$${pi++}`); prms.push(f.proveedor); }
+                if (f.fecha)     { sets.push(`fecha=$${pi++}`);     prms.push(f.fecha); }
+                if (sets.length) {
+                    prms.push(f.folio);
+                    const cond = sets.map((s,k) => {
+                        const col = s.split('=')[0];
+                        return `(${col} IS NULL OR ${col}='')`;
+                    }).join(' OR ');
+                    const { rowCount } = await pool.query(
+                        `UPDATE facturas SET ${sets.join(',')} WHERE folio=$${pi} AND (${cond})`,
+                        prms
+                    ).catch(() => ({ rowCount:0 }));
+                    if (rowCount > 0) actualizadas++;
                 }
                 omitidas++;
-                continue;
-            }
-            try {
+            } else {
                 await pool.query(
-                    'INSERT INTO facturas (folio, fecha, proveedor, rut, tipo_doc, monto, estado) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-                    [f.folio, f.fecha, f.proveedor, f.rut || null, f.tipo_doc || null, f.monto, 'pendiente']
-                );
-                existingFolios.add(f.folio); // evita duplicados dentro del mismo archivo
+                    'INSERT INTO facturas (folio,fecha,proveedor,rut,tipo_doc,monto,estado) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+                    [f.folio, f.fecha, f.proveedor, f.rut||null, f.tipo_doc, f.monto, 'pendiente']
+                ).catch(() => { omitidas++; return null; });
+                foliosExist.add(f.folio);
                 insertadas++;
-            } catch (e) { omitidas++; }
+            }
         }
 
-        if (req.file.path) fs.unlinkSync(req.file.path);
         const partes = [
-            insertadas > 0          ? `${insertadas} nuevas importadas`              : '',
-            rutActualizadas > 0     ? `${rutActualizadas} RUTs actualizados`         : '',
-            omitidas - rutActualizadas > 0 ? `${omitidas - rutActualizadas} sin cambios` : '',
+            insertadas   > 0 ? `${insertadas} importadas`          : '',
+            actualizadas > 0 ? `${actualizadas} RUTs actualizados` : '',
+            (omitidas - actualizadas) > 0
+                ? `${omitidas - actualizadas} sin cambios` : '',
         ].filter(Boolean);
-        res.json({
-            success: true,
-            insertadas,
-            omitidas,
-            rutActualizadas,
-            total: facturas.length,
-            message: partes.length ? partes.join(' · ') : 'Sin cambios'
-        });
-    } catch (error) {
-        res.json({ success: false, error: error.message });
-    }
+
+        res.json({ success: true, insertadas, omitidas, actualizadas,
+                   total: filas.length, message: partes.join(' · ') || 'Sin cambios' });
+    } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
-// ========== DOCUMENTOS - CREACIÓN MANUAL ==========
-
+// ═══════════════════════════════════════════════════════════════════════════════
+//  DOCUMENTOS MANUAL
+// ═══════════════════════════════════════════════════════════════════════════════
 app.post('/api/documentos/crear-manual', async (req, res) => {
+    const { documentos } = req.body;
+    if (!Array.isArray(documentos) || !documentos.length)
+        return res.json({ success: false, error: 'No hay documentos para crear' });
+
     try {
-        const { documentos } = req.body;
+        const { rows } = await pool.query('SELECT folio FROM facturas');
+        const foliosExist = new Set(rows.map(r => r.folio));
 
-        if (!documentos || !Array.isArray(documentos) || documentos.length === 0) {
-            return res.json({ success: false, error: 'No hay documentos para crear' });
-        }
-
-        // Obtener folios existentes
-        const existingResult = await pool.query('SELECT folio FROM facturas');
-        const existingFolios = new Set(existingResult.rows.map(r => r.folio));
-
-        let creados = 0;
-        let omitidos = 0;
-
+        let creados = 0, omitidos = 0;
         for (const doc of documentos) {
-            // Validar campos obligatorios
-            if (!doc.folio || !doc.fecha_factura || !doc.nombre_proveedor || !doc.monto) {
-                omitidos++;
-                continue;
-            }
-
-            // Verificar si ya existe el folio
-            if (existingFolios.has(doc.folio)) {
-                omitidos++;
-                continue;
-            }
-
-            try {
-                await pool.query(
-                    'INSERT INTO facturas (folio, fecha, proveedor, tipo_doc, monto, estado) VALUES ($1,$2,$3,$4,$5,$6)',
-                    [
-                        doc.folio,
-                        doc.fecha_factura,
-                        doc.nombre_proveedor,
-                        doc.tipo_doc || 'Factura',
-                        parseInt(doc.monto) || 0,
-                        'pendiente'
-                    ]
-                );
-                existingFolios.add(doc.folio);
-                creados++;
-            } catch (e) {
-                omitidos++;
-            }
+            if (!doc.folio || !doc.fecha_factura || !doc.nombre_proveedor || !doc.monto)
+                { omitidos++; continue; }
+            if (foliosExist.has(doc.folio))
+                { omitidos++; continue; }
+            await pool.query(
+                'INSERT INTO facturas (folio,fecha,proveedor,tipo_doc,monto,estado) VALUES ($1,$2,$3,$4,$5,$6)',
+                [doc.folio, doc.fecha_factura, doc.nombre_proveedor,
+                 doc.tipo_doc||'Factura', parseInt(doc.monto)||0, 'pendiente']
+            ).catch(() => { omitidos++; });
+            foliosExist.add(doc.folio);
+            creados++;
         }
-
-        res.json({
-            success: true,
-            documentos_creados: creados,
-            documentos_omitidos: omitidos,
-            message: `${creados} documento${creados !== 1 ? 's' : ''} creado${creados !== 1 ? 's' : ''}`
-        });
-    } catch (error) {
-        res.json({ success: false, error: error.message });
-    }
+        res.json({ success: true, documentos_creados: creados, documentos_omitidos: omitidos,
+                   message: `${creados} documento${creados!==1?'s':''} creado${creados!==1?'s':''}` });
+    } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
-// ========== USUARIOS ==========
+// ═══════════════════════════════════════════════════════════════════════════════
+//  INVENTARIO / PDF
+// ═══════════════════════════════════════════════════════════════════════════════
+function categorizarProducto(n) {
+    n = n.toLowerCase();
+    if (/ostra|salmón|salmon|merluza|mariscos?|calamar|camarón|camaron|congrio|atun|atún|pescado|pulpo|jaiba|centolla|erizo|cholga|almeja|navajuela|reineta|lenguado|trucha/.test(n))
+        return 'Pescados y Mariscos';
+    if (/cerveza|vino|bebida|jugo|agua|pisco|ron|vodka|whisky|espumante|refresco|licor/.test(n))
+        return 'Líquidos';
+    if (/congelad|frozen/.test(n)) return 'Congelados';
+    if (/tomate|lechuga|cebolla|papa|zanahoria|manzana|palta|limón|limon|naranja|pera|uva|fruta|verdura|vegetal|brocoli|espinaca|pepino|ajo|pimiento/.test(n))
+        return 'Frutas y Verduras';
+    if (/cloro|detergente|esponja|escoba|limpiador|jabón|jabon|desinfect|papel higién/.test(n))
+        return 'Aseo';
+    if (/servicio|mantención|manten|arriendo|instalación|instalacion|reparación|reparacion|asesoría/.test(n))
+        return 'Servicios';
+    return 'Abarrotes';
+}
 
-// GET usuarios
-app.get('/api/usuarios', async (req, res) => {
+function parsearTextoPDF(text) {
+    const full = text.split('\n').map(l=>l.trim()).filter(Boolean).join(' ');
+
+    const provMatch = full.match(/^([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s\.,]{4,80}?)\s{2,}/);
+    const proveedor = provMatch ? provMatch[1].trim() : full.substring(0,60).trim();
+
+    const rutMatch      = full.match(/R\.?U\.?T\.?\s*[:\s]*(\d{7,8}-[\dkK])/i);
+    const folioMatch    = full.match(/N[°º]\s*([\d\.]+)/i);
+    const fechaMatch    = full.match(/(\d{1,2})\s+de\s+(\w+)\s+de\s+(\d{4})/i);
+    const montoMatch    = full.match(/Monto Total\s+\$\s*([\d.,]+)/i);
+
+    let fecha = '';
+    if (fechaMatch) {
+        const meses = {enero:'01',febrero:'02',marzo:'03',abril:'04',mayo:'05',junio:'06',
+                       julio:'07',agosto:'08',septiembre:'09',octubre:'10',noviembre:'11',diciembre:'12'};
+        const mes = meses[fechaMatch[2].toLowerCase()] || '01';
+        fecha = `${fechaMatch[3]}-${mes}-${fechaMatch[1].padStart(2,'0')}`;
+    }
+
+    const items = [];
+    const bloque = full.match(/CODIGO\s+CANTIDAD\s+DETALLE\s+UNIDAD\s+P\.\s*UNITARIO\s+TOTAL(.+?)(?:REFERENCIAS|Sub-Total)/is);
+    if (bloque) {
+        const re = /([\d.,]+)\s+([A-ZÁÉÍÓÚÑ][^$]+?)\s+(UNID|KG|LT|UN|MT|CAJA|BOLSA|SACO|DOC|PAQ)\s+\$\s*([\d.,]+)\s+\$\s*([\d.,]+)/gi;
+        let m;
+        while ((m = re.exec(bloque[1])) !== null) {
+            const n = m[2].trim();
+            items.push({
+                nombre:         n,
+                cantidad:       parseFloat(m[1].replace(/\./g,'').replace(',','.')),
+                unidad:         m[3],
+                valor_unitario: parseFloat(m[4].replace(/\./g,'').replace(',','.')),
+                total:          parseFloat(m[5].replace(/\./g,'').replace(',','.')),
+                categoria:      categorizarProducto(n),
+            });
+        }
+    }
+
+    return {
+        proveedor,
+        rut_proveedor: rutMatch?.[1] || '',
+        folio:         folioMatch?.[1].replace(/\./g,'') || '',
+        fecha,
+        items,
+        monto_total: montoMatch ? parseFloat(montoMatch[1].replace(/\./g,'').replace(',','.')) : 0,
+    };
+}
+
+app.post('/api/inventario/parsear-pdf', upload.single('pdf'), async (req, res) => {
+    if (!req.file) return res.json({ success: false, error: 'No se recibió PDF' });
     try {
-        const result = await pool.query(
-            'SELECT id, nombre, email, rol, activo, created_at FROM usuarios ORDER BY created_at'
-        );
-        res.json({ success: true, usuarios: result.rows });
-    } catch (err) {
-        res.json({ success: false, error: err.message });
-    }
+        const { text } = await pdfParse(req.file.buffer);
+        res.json({ success: true, ...parsearTextoPDF(text), texto_raw: text });
+    } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
-// POST usuario (crear)
+app.post('/api/inventario/guardar-items', async (req, res) => {
+    const { items } = req.body;
+    if (!items?.length) return res.json({ success: false, error: 'Sin ítems' });
+    try {
+        let insertados = 0;
+        for (const it of items) {
+            await pool.query(
+                `INSERT INTO productos (folio,nombre,cantidad,valor,proveedor,rut_proveedor,unidad,categoria,fecha_factura)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+                [it.folio, it.nombre, it.cantidad, it.valor_unitario,
+                 it.proveedor, it.rut_proveedor, it.unidad, it.categoria, it.fecha_factura]
+            );
+            insertados++;
+        }
+        res.json({ success: true, insertados });
+    } catch (e) { res.json({ success: false, error: e.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  PRODUCTOS
+// ═══════════════════════════════════════════════════════════════════════════════
+app.get('/api/productos', async (_req, res) => {
+    try {
+        const { rows } = await pool.query('SELECT * FROM productos ORDER BY created_at DESC');
+        res.json({ success: true, productos: rows });
+    } catch (e) { res.json({ success: false, error: e.message }); }
+});
+
+app.delete('/api/productos/:id', async (req, res) => {
+    try {
+        await pool.query('DELETE FROM productos WHERE id=$1', [req.params.id]);
+        res.json({ success: true });
+    } catch (e) { res.json({ success: false, error: e.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  USUARIOS
+// ═══════════════════════════════════════════════════════════════════════════════
+app.get('/api/usuarios', async (_req, res) => {
+    try {
+        const { rows } = await pool.query(
+            'SELECT id,nombre,email,rol,activo,created_at FROM usuarios ORDER BY created_at'
+        );
+        res.json({ success: true, usuarios: rows });
+    } catch (e) { res.json({ success: false, error: e.message }); }
+});
+
 app.post('/api/usuarios', async (req, res) => {
     const { nombre, email, password, rol } = req.body;
     if (!nombre || !email || !password)
-        return res.json({ success: false, message: 'Nombre, email y contraseña son requeridos' });
+        return res.json({ success: false, message: 'Nombre, email y contraseña requeridos' });
     try {
         const hash = await bcrypt.hash(password, 10);
-        const result = await pool.query(
-            'INSERT INTO usuarios (nombre, email, password_hash, rol) VALUES ($1,$2,$3,$4) RETURNING id',
-            [nombre, email.toLowerCase().trim(), hash, rol || 'usuario']
+        const { rows } = await pool.query(
+            'INSERT INTO usuarios (nombre,email,password_hash,rol) VALUES ($1,$2,$3,$4) RETURNING id',
+            [nombre, email.toLowerCase().trim(), hash, rol||'usuario']
         );
-        res.json({ success: true, id: result.rows[0].id });
-    } catch (err) {
-        if (err.code === '23505')
-            return res.json({ success: false, message: 'Ya existe un usuario con ese email' });
-        res.json({ success: false, error: err.message });
+        res.json({ success: true, id: rows[0].id });
+    } catch (e) {
+        if (e.code === '23505') return res.json({ success: false, message: 'Email ya existe' });
+        res.json({ success: false, error: e.message });
     }
 });
 
-// DELETE usuario
 app.delete('/api/usuarios/:id', async (req, res) => {
     try {
-        const user = await pool.query('SELECT rol FROM usuarios WHERE id=$1', [req.params.id]);
-        if (!user.rows.length) return res.json({ success: false, message: 'Usuario no encontrado' });
-
-        if (user.rows[0].rol === 'admin') {
-            const admins = await pool.query("SELECT COUNT(*) FROM usuarios WHERE rol='admin' AND activo=true");
-            if (parseInt(admins.rows[0].count) <= 1)
-                return res.json({ success: false, message: 'No se puede eliminar el único administrador' });
+        const { rows } = await pool.query('SELECT rol FROM usuarios WHERE id=$1', [req.params.id]);
+        if (!rows.length) return res.json({ success: false, message: 'Usuario no encontrado' });
+        if (rows[0].rol === 'admin') {
+            const { rows: admins } = await pool.query(
+                "SELECT COUNT(*) FROM usuarios WHERE rol='admin' AND activo=true"
+            );
+            if (parseInt(admins[0].count) <= 1)
+                return res.json({ success: false, message: 'No se puede eliminar el único admin' });
         }
         await pool.query('DELETE FROM usuarios WHERE id=$1', [req.params.id]);
         res.json({ success: true });
-    } catch (err) {
-        res.json({ success: false, error: err.message });
-    }
+    } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
-// FRONTEND
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
-});
-
-// INICIAR SERVIDOR (solo en local, no en Netlify)
+// ─── Start ───────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
-    console.log(`
+app.listen(PORT, () => console.log(`
 ╔════════════════════════════════════════╗
-║   ✅ Facturas Cloud — PostgreSQL      ║
-║   🚀 http://localhost:${PORT}            ║
-║   📊 Excel: FUNCIONAL                  ║
-║   💳 Pagos: FUNCIONAL                  ║
-║   📦 Inventario: FUNCIONAL             ║
+║   ✅ Facturas Cloud v4.5              ║
+║   🚀 Puerto ${PORT}                      ║
+║   📊 Excel Import  : ✅               ║
+║   💳 Pagos/Cheques : ✅               ║
+║   📦 Inventario PDF: ✅               ║
+║   🔍 Health Check  : /api/health      ║
 ╚════════════════════════════════════════╝
-    `);
-});
+`));
 
 export default app;
