@@ -1,2828 +1,937 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Facturas Cloud v4.5+ [PAGOS-AGRUPADOS]</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.min.js"></script>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        :root { --primary: #2563eb; --primary-dark: #1e40af; --success: #10b981; --light: #f9fafb; --gray: #6b7280; --border: #e5e7eb; }
-        html, body { width: 100%; height: 100%; overflow: hidden; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--light); display: flex; }
-        .auth-overlay { display: flex; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%); justify-content: center; align-items: center; z-index: 9999; }
-        .auth-overlay.hidden { display: none; }
-        .auth-card { background: white; padding: 2.5rem; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); width: 100%; max-width: 400px; }
-        .auth-card h1 { text-align: center; margin-bottom: 0.5rem; color: var(--primary); font-size: 2rem; }
-        .form-group { margin-bottom: 1rem; }
-        .form-group label { display: block; margin-bottom: 0.4rem; font-weight: 600; }
-        .form-group input { width: 100%; padding: 0.8rem; border: 1px solid var(--border); border-radius: 6px; }
-        .btn { padding: 0.8rem; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; width: 100%; transition: all 0.3s; }
-        .btn-primary { background: var(--primary); color: white; }
-        .btn-primary:hover { background: var(--primary-dark); }
-        .sidebar { width: 280px; background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%); color: white; display: flex; flex-direction: column; }
-        .sidebar-header { padding: 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.2); text-align: center; }
-        .sidebar-nav { flex: 1; padding: 1rem 0; overflow-y: auto; }
-        .nav-item { padding: 0.8rem 1.5rem; cursor: pointer; border-left: 3px solid transparent; transition: all 0.3s; }
-        .nav-item:hover { background: rgba(255,255,255,0.1); }
-        .nav-item.active { background: rgba(255,255,255,0.15); border-left-color: white; font-weight: 600; }
-        .sidebar-footer { padding: 1rem; border-top: 1px solid rgba(255,255,255,0.2); }
-        .main-container { flex: 1; display: flex; flex-direction: column; }
-        .top-bar { background: white; padding: 1rem 2rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
-        .content { flex: 1; overflow-y: auto; padding: 2rem; }
-        .section { display: none; }
-        .section.active { display: block; }
-        h2 { font-size: 1.5rem; margin-bottom: 1.5rem; }
-        .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
-        .kpi-card { background: white; padding: 1.4rem 1.5rem; border-radius: 12px; border-left: 4px solid var(--primary); box-shadow: 0 2px 8px rgba(0,0,0,0.08); display:flex; flex-direction:column; gap:0.3rem; transition: transform 0.15s, box-shadow 0.15s; }
-        .kpi-card:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.13); }
-        .kpi-header { display:flex; justify-content:space-between; align-items:center; }
-        .kpi-label { font-size: 0.75rem; color: var(--gray); text-transform: uppercase; font-weight: 700; letter-spacing:0.04em; }
-        .kpi-icon { font-size: 1.4rem; opacity: 0.85; }
-        .kpi-value { font-size: 2rem; font-weight: 800; color: var(--primary); line-height:1; }
-        .kpi-sub { font-size: 0.75rem; color: var(--gray); margin-top:0.1rem; }
-        .dash-section-title { font-size:0.8rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--gray); margin: 1.5rem 0 0.7rem; border-left:3px solid var(--primary); padding-left:0.6rem; }
-        .white-card { background: white; padding: 1.5rem; border-radius: 8px; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        .table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        .table thead { background: #f3f4f6; }
-        .table th { padding: 0.8rem; text-align: left; font-weight: 600; font-size: 0.85rem; }
-        .table td { padding: 0.8rem; border-bottom: 1px solid var(--border); }
-        .state-badge { padding: 0.3rem 0.8rem; border-radius: 20px; font-size: 0.75rem; font-weight: 600; }
-        .state-badge.pendiente { background: #fef3c7; color: #92400e; }
-        .state-badge.pagada { background: #d1fae5; color: #065f46; }
-        .upload-area { border: 2px dashed var(--border); border-radius: 8px; padding: 2rem; text-align: center; cursor: pointer; transition: all 0.3s; }
-        .upload-area:hover { border-color: var(--primary); background: rgba(37,99,235,0.05); }
-        .file-input { display: none; }
-        .msg { padding: 1rem; border-radius: 6px; margin-top: 1rem; }
-        .msg.success { background: #d1fae5; color: #065f46; border-left: 4px solid var(--success); }
-        .msg.error { background: #fee2e2; color: #991b1b; border-left: 4px solid #ef4444; }
-        .msg.info { background: #dbeafe; color: #1e40af; border-left: 4px solid var(--primary); }
-        .spinner { display: inline-block; width: 20px; height: 20px; border: 3px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin-right: 0.5rem; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-        select { width: 100%; padding: 0.8rem; border: 1px solid var(--border); border-radius: 6px; }
-        .product-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1rem; }
-        .product-card { background: white; padding: 1rem; border-radius: 8px; border-top: 3px solid var(--primary); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        .cat-pill { display:inline-block; padding:0.2rem 0.7rem; border-radius:20px; font-size:0.72rem; font-weight:700; }
-        .cat-pescados  { background:#dbeafe; color:#1e40af; }
-        .cat-liquidos  { background:#ede9fe; color:#5b21b6; }
-        .cat-congelados{ background:#cffafe; color:#155e75; }
-        .cat-frutas    { background:#dcfce7; color:#166534; }
-        .cat-aseo      { background:#fef9c3; color:#854d0e; }
-        .cat-servicios { background:#f3f4f6; color:#374151; }
-        .cat-abarrotes { background:#fce7f3; color:#9d174d; }
-        .pdf-drop-zone { border:2px dashed #93c5fd; border-radius:12px; padding:2.5rem; text-align:center; cursor:pointer; transition:all 0.2s; background:#f8faff; }
-        .pdf-drop-zone:hover, .pdf-drop-zone.dragover { border-color:var(--primary); background:#eff6ff; }
-        .preview-item-row td { padding:0.5rem 0.6rem; font-size:0.85rem; border-bottom:1px solid #f3f4f6; }
-        .cat-select { font-size:0.8rem; padding:0.2rem 0.4rem; border:1px solid #d1d5db; border-radius:6px; }
-        .state-badge.transferencia { background: #dbeafe; color: #1e40af; }
-        .state-badge.cheque        { background: #fce7f3; color: #9d174d; }
-        .state-badge.webpay        { background: #d1fae5; color: #065f46; }
-        .grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 1rem; align-items: end; }
-        .cheque-row { display: grid; grid-template-columns: 1.5fr 1.5fr 2fr auto; gap: 0.5rem; margin-bottom: 0.5rem; align-items: end; }
-        .cheque-row label { font-size: 0.78rem; color: var(--gray); display: block; margin-bottom: 0.3rem; font-weight: 600; }
-        .cheque-row input { width: 100%; padding: 0.6rem; border: 1px solid var(--border); border-radius: 6px; font-size: 0.9rem; }
-        .btn-danger { background: #fee2e2; color: #991b1b; border: none; padding: 0.6rem 0.8rem; border-radius: 6px; cursor: pointer; font-size: 0.9rem; }
-        .btn-success { background: var(--success); color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 600; }
-        .pago-fields { border-top: 1px solid var(--border); margin-top: 1rem; padding-top: 1rem; }
-        .cheque-section { background: #f9fafb; border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-top: 0.5rem; }
-        input[type="date"], input[type="text"], input[type="number"] { width: 100%; padding: 0.8rem; border: 1px solid var(--border); border-radius: 6px; font-size: 0.95rem; }
-        .filtros-grid { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 1rem; align-items: end; }
-        @media (max-width: 900px) { .filtros-grid { grid-template-columns: 1fr 1fr; } .cheque-row { grid-template-columns: 1fr 1fr; } }
-        .state-badge.por_vencer { background: #ffedd5; color: #9a3412; }
-        .state-badge.vencida    { background: #fee2e2; color: #b91c1c; }
-        .reporte-bar { height: 10px; border-radius: 5px; background: #e5e7eb; overflow: hidden; margin-top: 0.4rem; }
-        .reporte-bar-fill { height: 100%; border-radius: 5px; transition: width 0.6s ease; }
-        .btn-export { background: #10b981; color: white; border: none; padding: 0.5rem 1.2rem; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 600; transition: background 0.2s; white-space:nowrap; }
-        .btn-export:hover { background: #059669; }
-        .btn-limpiar-bd { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; padding: 0.7rem 1rem; border-radius: 6px; cursor: pointer; font-size: 0.9rem; font-weight: 600; transition: background 0.2s; }
-        .btn-limpiar-bd:hover { background: #fecaca; }
-        .filtros-reporte { display: grid; grid-template-columns: 2fr 1.5fr 1fr 1fr auto; gap: 0.8rem; align-items: end; margin-bottom: 0.8rem; }
-        @media (max-width: 1100px) { .filtros-reporte { grid-template-columns: 1fr 1fr; } }
-        .card-header-actions { display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; flex-wrap:wrap; gap:0.5rem; }
-        .btn-periodo { padding: 0.42rem 1rem; border: 1.5px solid var(--border); border-radius: 20px; background: white; cursor: pointer; font-size: 0.82rem; font-weight: 500; color: var(--gray); transition: all 0.2s; white-space: nowrap; }
-        .btn-periodo:hover { border-color: var(--primary); color: var(--primary); background: rgba(37,99,235,0.05); }
-        .btn-periodo.active { background: var(--primary); color: white; border-color: var(--primary); font-weight: 600; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistema de Gestión de Facturas y Pagos</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #f5f5f5;
+      color: #333;
+    }
+
+    header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px 0;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+
+    header h1 {
+      font-size: 28px;
+      margin-bottom: 10px;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    nav {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      background: #667eea;
+      color: white;
+      border: none;
+      padding: 12px 20px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background 0.3s;
+    }
+
+    button:hover {
+      background: #764ba2;
+    }
+
+    button.active {
+      background: #764ba2;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.3);
+    }
+
+    .section {
+      display: none;
+      background: white;
+      padding: 25px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .section.active {
+      display: block;
+    }
+
+    h2 {
+      color: #667eea;
+      margin-bottom: 20px;
+      border-bottom: 2px solid #667eea;
+      padding-bottom: 10px;
+    }
+
+    .form-group {
+      margin-bottom: 15px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: 500;
+      color: #555;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      font-size: 14px;
+      font-family: inherit;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+    }
+
+    .form-row.full {
+      grid-template-columns: 1fr;
+    }
+
+    button.primary {
+      background: #667eea;
+      grid-column: span 2;
+    }
+
+    button.secondary {
+      background: #6c757d;
+    }
+
+    button.secondary:hover {
+      background: #5a6268;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+
+    th {
+      background: #f0f0f0;
+      padding: 12px;
+      text-align: left;
+      font-weight: 600;
+      border-bottom: 2px solid #ddd;
+      color: #333;
+    }
+
+    td {
+      padding: 12px;
+      border-bottom: 1px solid #eee;
+    }
+
+    tr:hover {
+      background: #f9f9f9;
+    }
+
+    .status {
+      display: inline-block;
+      padding: 5px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .status.pendiente {
+      background: #fff3cd;
+      color: #856404;
+    }
+
+    .status.pagado {
+      background: #d4edda;
+      color: #155724;
+    }
+
+    .status.parcial {
+      background: #cfe2ff;
+      color: #084298;
+    }
+
+    .status.vencido {
+      background: #f8d7da;
+      color: #721c24;
+    }
+
+    .alert {
+      padding: 15px;
+      border-radius: 5px;
+      margin-bottom: 20px;
+    }
+
+    .alert.success {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+
+    .alert.error {
+      background: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+
+    .alert.info {
+      background: #d1ecf1;
+      color: #0c5460;
+      border: 1px solid #bee5eb;
+    }
+
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+
+    .card {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .card h3 {
+      font-size: 14px;
+      opacity: 0.9;
+      margin-bottom: 10px;
+    }
+
+    .card-value {
+      font-size: 32px;
+      font-weight: bold;
+    }
+
+    @media (max-width: 768px) {
+      .form-row {
+        grid-template-columns: 1fr;
+      }
+
+      button.primary {
+        grid-column: span 1;
+      }
+
+      table {
+        font-size: 12px;
+      }
+
+      th, td {
+        padding: 8px;
+      }
+    }
+  </style>
 </head>
 <body>
-    <div class="auth-overlay" id="authOverlay">
-        <div class="auth-card">
-            <h1>📊 Facturas Cloud</h1>
-            <p style="text-align: center; color: var(--gray); margin-bottom: 1.5rem;">v4.5+ | Express + SQLite</p>
-            <form onsubmit="login(event)">
-                <div class="form-group">
-                    <label>Email:</label>
-                    <input type="email" id="email" placeholder="usuario1@empresa.com" required>
-                </div>
-                <div class="form-group">
-                    <label>Contraseña:</label>
-                    <input type="password" id="password" placeholder="admin123" required>
-                </div>
-                <button type="submit" class="btn btn-primary">🔓 Ingresar</button>
-            </form>
+  <header>
+    <div class="container">
+      <h1>📊 Sistema de Gestión de Facturas y Pagos</h1>
+      <p id="user-info">Conectando a Supabase...</p>
+    </div>
+  </header>
+
+  <div class="container">
+    <nav>
+      <button class="nav-btn active" data-section="dashboard">Dashboard</button>
+      <button class="nav-btn" data-section="invoices">Facturas</button>
+      <button class="nav-btn" data-section="providers">Proveedores</button>
+      <button class="nav-btn" data-section="payments">Pagos</button>
+      <button class="nav-btn" data-section="checks">Cheques</button>
+      <button class="nav-btn" data-section="reports">Reportes</button>
+    </nav>
+
+    <div id="alert-container"></div>
+
+    <!-- DASHBOARD -->
+    <div id="dashboard" class="section active">
+      <h2>Dashboard Ejecutivo</h2>
+      <div class="dashboard-grid">
+        <div class="card">
+          <h3>Total Facturas Pendientes</h3>
+          <div class="card-value" id="total-pending">0</div>
         </div>
+        <div class="card">
+          <h3>Monto Pendiente</h3>
+          <div class="card-value" id="total-amount">$0</div>
+        </div>
+        <div class="card">
+          <h3>Cheques por Cobrar</h3>
+          <div class="card-value" id="pending-checks">0</div>
+        </div>
+        <div class="card">
+          <h3>Proveedores Activos</h3>
+          <div class="card-value" id="active-providers">0</div>
+        </div>
+      </div>
+      <div id="recent-invoices"></div>
     </div>
 
-    <div id="appContainer" style="display: none; width: 100%; display: flex;">
-        <div class="sidebar">
-            <div class="sidebar-header">
-                <div style="font-size: 2.5rem;">📊</div>
-                <div style="font-weight: 700;">Facturas Cloud</div>
-                <div style="font-size: 0.7rem; opacity: 0.9;">v4.5+ Express</div>
-            </div>
-            <div class="sidebar-nav">
-                <div class="nav-item active" onclick="cambiarSeccion('dashboard')">📈 Dashboard</div>
-                <div class="nav-item" onclick="cambiarSeccion('facturas')">📄 Facturas</div>
-                <div class="nav-item" onclick="cambiarSeccion('importar')">📥 Importar Excel</div>
-                <div class="nav-item" onclick="cambiarSeccion('inventario')">📦 Inventario</div>
-                <div class="nav-item" onclick="cambiarSeccion('pagos')">💳 Pagos</div>
-                <div class="nav-item" onclick="cambiarSeccion('reportes')">📊 Reportes</div>
-                <div class="nav-item" id="navConfiguracion" style="display:none;" onclick="cambiarSeccion('configuracion')">⚙️ Configuración</div>
-            </div>
-            <div class="sidebar-footer">
-                <button class="btn btn-primary" onclick="logout()">Logout</button>
-            </div>
+    <!-- FACTURAS -->
+    <div id="invoices" class="section">
+      <h2>Gestión de Facturas</h2>
+
+      <form id="invoice-form">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Número de Factura *</label>
+            <input type="text" id="invoice-number" required>
+          </div>
+          <div class="form-group">
+            <label>Fecha *</label>
+            <input type="date" id="invoice-date" required>
+          </div>
         </div>
 
-        <div class="main-container">
-            <div class="top-bar">
-                <div style="font-size: 1.5rem; font-weight: 700;">📊 Facturas Cloud v4.5+</div>
-                <div style="background: var(--success); color: white; padding: 0.5rem 1rem; border-radius: 20px; font-size: 0.85rem; font-weight: 600;">🟢 Online</div>
-            </div>
-
-            <div class="content">
-                <section id="dashboard" class="section active">
-                    <h2>📈 Dashboard</h2>
-
-                    <div class="kpi-grid">
-                        <div class="kpi-card">
-                            <div class="kpi-header"><div class="kpi-label">Total Docs</div><div class="kpi-icon">📋</div></div>
-                            <div class="kpi-value" id="kpi-total">0</div>
-                            <div class="kpi-sub">documentos registrados</div>
-                        </div>
-                        <div class="kpi-card">
-                            <div class="kpi-header"><div class="kpi-label">Monto Total</div><div class="kpi-icon">💰</div></div>
-                            <div class="kpi-value" id="kpi-monto" style="font-size:1.4rem;">$0</div>
-                            <div class="kpi-sub">cartera total</div>
-                        </div>
-                        <div class="kpi-card">
-                            <div class="kpi-header"><div class="kpi-label">Pendientes</div><div class="kpi-icon">⏳</div></div>
-                            <div class="kpi-value" id="kpi-pendientes">0</div>
-                            <div class="kpi-sub">sin pagar</div>
-                        </div>
-                        <div class="kpi-card" style="border-left-color:#10b981;">
-                            <div class="kpi-header"><div class="kpi-label">Pagadas</div><div class="kpi-icon">✅</div></div>
-                            <div class="kpi-value" id="kpi-pagadas" style="color:#10b981;">0</div>
-                            <div class="kpi-sub">canceladas</div>
-                        </div>
-                        <div class="kpi-card" style="border-left-color:#f97316;">
-                            <div class="kpi-header"><div class="kpi-label">Por Vencer</div><div class="kpi-icon">🟠</div></div>
-                            <div class="kpi-value" id="kpi-por-vencer" style="color:#f97316;">0</div>
-                            <div class="kpi-sub">próximas a vencer</div>
-                        </div>
-                        <div class="kpi-card" style="border-left-color:#ef4444;">
-                            <div class="kpi-header"><div class="kpi-label">Vencidas</div><div class="kpi-icon">🔴</div></div>
-                            <div class="kpi-value" id="kpi-vencidas" style="color:#ef4444;">0</div>
-                            <div class="kpi-sub">requieren atención</div>
-                        </div>
-                    </div>
-
-                    <div class="dash-section-title">Últimos Documentos Ingresados</div>
-                    <table class="table">
-                        <thead><tr><th>Tipo Doc</th><th>Folio</th><th>Proveedor</th><th>Fecha</th><th>Monto</th><th>Estado</th></tr></thead>
-                        <tbody id="dashboardTable"><tr><td colspan="6" style="text-align:center; color:var(--gray); padding:1.5rem;">Sin documentos</td></tr></tbody>
-                    </table>
-                </section>
-
-                <section id="facturas" class="section">
-                    <h2>📄 Facturas</h2>
-                    <div class="white-card" style="padding: 1rem 1.5rem; margin-bottom: 1rem;">
-                        <!-- Botones de período -->
-                        <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.8rem; align-items:center;">
-                            <span style="font-size:0.78rem; font-weight:700; color:var(--gray); margin-right:0.2rem; white-space:nowrap;">Período:</span>
-                            <button onclick="filtrarPorPeriodo('todos')" id="btn-periodo-todos" class="btn-periodo active">Todos</button>
-                            <button onclick="filtrarPorPeriodo('semana_actual')" id="btn-periodo-semana_actual" class="btn-periodo">📅 Semana Actual</button>
-                            <button onclick="filtrarPorPeriodo('semana_anterior')" id="btn-periodo-semana_anterior" class="btn-periodo">⬅️ Semana Anterior</button>
-                            <button onclick="filtrarPorPeriodo('mes_actual')" id="btn-periodo-mes_actual" class="btn-periodo">🗓️ Mes Actual</button>
-                            <button onclick="filtrarPorPeriodo('mes_anterior')" id="btn-periodo-mes_anterior" class="btn-periodo">📆 Mes Anterior</button>
-                            <button onclick="filtrarPorPeriodo('personalizado')" id="btn-periodo-personalizado" class="btn-periodo">🔧 Personalizado</button>
-                        </div>
-                        <!-- Filtros personalizados: fecha + nombre + categoría (solo en modo Personalizado) -->
-                        <div id="filtros-personalizados" style="display:none; flex-wrap:wrap; gap:0.8rem; align-items:flex-end; margin-bottom:0.8rem;">
-                            <div style="flex:1; min-width:180px;">
-                                <label style="display:block; font-size:0.82rem; font-weight:600; margin-bottom:0.3rem; color:var(--gray);">Proveedor / Nombre:</label>
-                                <input type="text" id="filtroProveedor" placeholder="Buscar proveedor..." oninput="renderTablaFacturas()" style="width:100%; padding:0.65rem; border:1px solid var(--border); border-radius:6px; font-size:0.9rem;">
-                            </div>
-                            <div>
-                                <label style="display:block; font-size:0.82rem; font-weight:600; margin-bottom:0.3rem; color:var(--gray);">Categoría:</label>
-                                <select id="filtroCategoria" onchange="renderTablaFacturas()" style="width:100%; padding:0.65rem; border:1px solid var(--border); border-radius:6px; font-size:0.9rem; min-width:150px;">
-                                    <option value="">— Todas —</option>
-                                    <option value="Abarrotes">🛒 Abarrotes</option>
-                                    <option value="Aseo & Limpieza">🧹 Aseo & Limpieza</option>
-                                    <option value="Autopistas">🛣️ Autopistas</option>
-                                    <option value="Congelados">❄️ Congelados</option>
-                                    <option value="Envases">📦 Envases</option>
-                                    <option value="Ferretería">🔨 Ferretería</option>
-                                    <option value="Frutas & Verduras">🥕 Frutas & Verduras</option>
-                                    <option value="Carnes">🥩 Carnes</option>
-                                    <option value="Pescados y Mariscos">🦞 Pescados y Mariscos</option>
-                                    <option value="Comercio">🏬 Comercio</option>
-                                    <option value="Líquidos">🍷 Líquidos</option>
-                                    <option value="Servicios">🔧 Servicios</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label style="display:block; font-size:0.82rem; font-weight:600; margin-bottom:0.3rem; color:var(--gray);">Desde:</label>
-                                <input type="date" id="filtroDesdeFacturas" onchange="renderTablaFacturas()" style="padding:0.65rem; border:1px solid var(--border); border-radius:6px; font-size:0.9rem;">
-                            </div>
-                            <div>
-                                <label style="display:block; font-size:0.82rem; font-weight:600; margin-bottom:0.3rem; color:var(--gray);">Hasta:</label>
-                                <input type="date" id="filtroHastaFacturas" onchange="renderTablaFacturas()" style="padding:0.65rem; border:1px solid var(--border); border-radius:6px; font-size:0.9rem;">
-                            </div>
-                        </div>
-                        <!-- Controles auxiliares -->
-                        <div style="display:flex; gap:0.8rem; align-items:center; flex-wrap:wrap;">
-                            <button onclick="toggleSortFecha()" id="btnSortFecha" style="padding:0.6rem 1rem; border:1px solid var(--border); border-radius:6px; background:white; cursor:pointer; font-size:0.85rem; white-space:nowrap;">📅 Fecha ▼</button>
-                            <button onclick="limpiarFiltroFacturas()" style="padding:0.6rem 1rem; border:1px solid var(--border); border-radius:6px; background:#f3f4f6; color:var(--gray); cursor:pointer; font-size:0.85rem;">Limpiar</button>
-                            <button onclick="limpiarBaseFacturas()" class="btn-limpiar-bd">🗑️ Limpiar BD</button>
-                        </div>
-                        <div id="facturasFiltroInfo" style="margin-top:0.5rem; font-size:0.82rem; color:var(--gray);"></div>
-                    </div>
-                    <!-- Controles de selección masiva -->
-                    <div id="controlesMasivos" style="display:none; margin-bottom:1rem; padding:0.8rem; background:#f0f8ff; border-radius:6px; border-left:4px solid var(--primary);">
-                        <div style="display:flex; gap:1rem; align-items:center; flex-wrap:wrap;">
-                            <span id="conteoSeleccionadas" style="font-weight:700; color:var(--primary);">0 seleccionadas</span>
-                            <button onclick="seleccionarTodas()" class="btn btn-primary" style="width:auto; padding:0.6rem 1rem; font-size:0.9rem;">✓ Seleccionar Todas</button>
-                            <button onclick="deseleccionarTodas()" class="btn" style="width:auto; padding:0.6rem 1rem; font-size:0.9rem; background:#f3f4f6; color:var(--gray);">✕ Deseleccionar</button>
-                            <button onclick="abrirModalCategoriaLote()" class="btn btn-primary" style="width:auto; padding:0.6rem 1.5rem; font-size:0.9rem; background:var(--success);">🏷️ Asignar Categoría a Lote</button>
-                        </div>
-                    </div>
-
-                    <table class="table">
-                        <thead>
-                            <tr>
-                                <th style="width:40px;"><input type="checkbox" id="checkTodos" onchange="toggleCheckTodos()" style="cursor:pointer; width:18px; height:18px;"></th>
-                                <th>Tipo Doc</th>
-                                <th>Folio</th>
-                                <th>Proveedor</th>
-                                <th>RUT</th>
-                                <th style="cursor:pointer; user-select:none;" onclick="toggleSortFecha()">Fecha <span id="sortIcon">▼</span></th>
-                                <th>Monto</th>
-                                <th>Categoría</th>
-                                <th>Estado</th>
-                                <th>Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody id="facturasTable"><tr><td colspan="10" style="text-align: center;">Cargando...</td></tr></tbody>
-                    </table>
-                </section>
-
-                <section id="importar" class="section">
-                    <h2>📥 Importar Excel</h2>
-
-                    <!-- Tabs de navegación -->
-                    <div style="display:flex; gap:1rem; margin-bottom:1.5rem; border-bottom:2px solid var(--border); padding-bottom:0;">
-                        <button id="tabImportacion" class="active" onclick="cambiarTabImportar('importacion')" style="padding:0.8rem 1.5rem; background:none; border:none; border-bottom:3px solid var(--primary); color:var(--primary); cursor:pointer; font-weight:700; font-size:1rem;">📁 Importación Masiva</button>
-                        <button id="tabCreacion" onclick="cambiarTabImportar('creacion')" style="padding:0.8rem 1.5rem; background:none; border:none; border-bottom:3px solid transparent; color:var(--gray); cursor:pointer; font-weight:700; font-size:1rem; transition:all 0.3s;">✏️ Creación Manual</button>
-                    </div>
-
-                    <!-- TAB 1: IMPORTACIÓN MASIVA -->
-                    <div id="contenidoImportacion" class="white-card">
-                        <p style="margin-bottom: 1rem; color: var(--gray);"><strong>Archivo:</strong> Fact_Compras_Abril_26.xlsx</p>
-                        <p style="margin-bottom: 1.5rem; color: var(--gray);"><strong>Columnas:</strong> Folio | F. Emision | Nombre | Total</p>
-
-                        <!-- Tipo de Documento -->
-                        <div style="margin-bottom: 2rem; padding: 1rem; background: #f9fafb; border-radius: 8px; border-left: 4px solid var(--primary);">
-                            <label style="display:block; margin-bottom:0.8rem; font-weight:700; font-size:1rem;">Tipo de Documento a Importar:</label>
-                            <div style="display:grid; grid-template-columns: 1fr 1fr 2fr; gap:0.8rem;">
-                                <select id="tipoDocImportar" onchange="cambiarTipoDocImportar()" style="width:100%; padding:0.8rem; border:1px solid var(--border); border-radius:6px; font-size:0.95rem;">
-                                    <option value="factura">📄 Factura</option>
-                                    <option value="gasto">💸 Gasto</option>
-                                    <option value="otro">📋 Otro tipo de documento</option>
-                                </select>
-                                <input type="text" id="otroTipoDocImportar" placeholder="Ej: Nota de Crédito" style="width:100%; padding:0.8rem; border:1px solid var(--border); border-radius:6px; display:none; font-size:0.95rem;">
-                            </div>
-                        </div>
-
-                        <!-- Upload Area -->
-                        <p style="margin-bottom: 1rem; color: var(--gray); font-weight:600;">Selecciona tu archivo Excel:</p>
-                        <label class="upload-area" ondrop="handleDropExcel(event)" ondragover="event.preventDefault()">
-                            📁 Arrastra Excel aquí o haz click
-                            <input type="file" class="file-input" accept=".xlsx,.xls,.csv" id="excelFile" onchange="importarExcel(event)">
-                        </label>
-                        <div id="excelMsg"></div>
-                    </div>
-
-                    <!-- TAB 2: CREACIÓN MANUAL -->
-                    <div id="contenidoCreacion" class="white-card" style="display:none;">
-                        <h3 style="margin-bottom:1rem; color:var(--primary);">Crear Documentos Manualmente</h3>
-
-                        <!-- Tipo de Documento -->
-                        <div style="margin-bottom: 1.5rem; padding: 1rem; background: #f9fafb; border-radius: 8px; border-left: 4px solid var(--success);">
-                            <label style="display:block; margin-bottom:0.5rem; font-weight:700;">Tipo de Documento:</label>
-                            <div style="display:grid; grid-template-columns: 1fr 2fr; gap:0.8rem;">
-                                <select id="tipoDocCreacion" onchange="cambiarTipoDocCreacion()" style="width:100%; padding:0.8rem; border:1px solid var(--border); border-radius:6px;">
-                                    <option value="factura">📄 Factura</option>
-                                    <option value="gasto">💸 Gasto</option>
-                                    <option value="otro">📋 Otro tipo de documento</option>
-                                </select>
-                                <input type="text" id="otroTipoDocCreacion" placeholder="Ej: Nota de Crédito" style="width:100%; padding:0.8rem; border:1px solid var(--border); border-radius:6px; display:none;">
-                            </div>
-                        </div>
-
-                        <!-- Tabla de ingreso manual -->
-                        <div style="margin-bottom:1.5rem;">
-                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
-                                <label style="font-weight:700; font-size:0.95rem;">Documentos a Crear:</label>
-                                <button onclick="agregarFilaManual()" class="btn-success">+ Agregar Fila</button>
-                            </div>
-                            <table class="table" id="tablaCreacionManual">
-                                <thead>
-                                    <tr>
-                                        <th>Folio</th>
-                                        <th>Fecha Emisión</th>
-                                        <th>Proveedor</th>
-                                        <th>Monto</th>
-                                        <th>Acción</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="tbodyCreacionManual">
-                                    <!-- Se llena dinámicamente -->
-                                </tbody>
-                            </table>
-                        </div>
-
-                        <!-- Botones de acción -->
-                        <div style="display:flex; gap:0.8rem; margin-top:1.5rem;">
-                            <button onclick="guardarDocumentosManual()" class="btn btn-primary" style="width:auto; padding:0.8rem 2rem;">💾 Guardar Documentos</button>
-                            <button onclick="limpiarFormularioManual()" class="btn" style="width:auto; padding:0.8rem 1.5rem; background:#f3f4f6; color:var(--gray);">Limpiar</button>
-                        </div>
-                        <div id="mensajeCreacion"></div>
-                    </div>
-                </section>
-
-                <section id="inventario" class="section">
-                    <h2>📦 Inventario</h2>
-
-                    <!-- Captura PDF -->
-                    <div class="white-card">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; flex-wrap:wrap; gap:0.5rem;">
-                            <h3 style="font-size:1rem; color:var(--gray); margin:0;">📄 Importar desde Factura PDF</h3>
-                            <span id="pdfEstado" style="font-size:0.82rem; color:var(--gray);"></span>
-                        </div>
-                        <div class="pdf-drop-zone" id="pdfDropZone" onclick="document.getElementById('pdfFileInput').click()">
-                            <div style="font-size:2.5rem; margin-bottom:0.5rem;">📂</div>
-                            <div style="font-weight:600; color:var(--primary);">Arrastra tu factura PDF aquí</div>
-                            <div style="font-size:0.82rem; color:var(--gray); margin-top:0.3rem;">o haz clic para seleccionar</div>
-                        </div>
-                        <input type="file" id="pdfFileInput" accept=".pdf" style="display:none" onchange="procesarPDF(this.files[0])">
-
-                        <!-- Preview de ítems extraídos -->
-                        <div id="pdfPreview" style="display:none; margin-top:1.2rem;">
-                            <div id="pdfInfoHeader" style="background:#f0f9ff; border:1px solid #bae6fd; border-radius:8px; padding:0.8rem 1rem; margin-bottom:1rem; font-size:0.88rem;"></div>
-                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
-                                <strong style="font-size:0.9rem;">Ítems detectados — revisa y ajusta categoría:</strong>
-                                <div style="display:flex; gap:0.5rem;">
-                                    <button class="btn" onclick="cancelarPDF()" style="padding:0.4rem 1rem; background:#f3f4f6; color:var(--gray); width:auto;">Cancelar</button>
-                                    <button class="btn btn-primary" onclick="guardarItemsPDF()" style="padding:0.4rem 1.2rem; width:auto;">✅ Guardar en Inventario</button>
-                                </div>
-                            </div>
-                            <div style="overflow-x:auto;">
-                                <table class="table" style="margin-bottom:0;">
-                                    <thead><tr><th>Producto</th><th>Cantidad</th><th>Unidad</th><th>Valor Unit.</th><th>Total</th><th>Categoría</th></tr></thead>
-                                    <tbody id="pdfItemsBody"></tbody>
-                                </table>
-                            </div>
-                            <div id="pdfMsg" style="margin-top:0.5rem;"></div>
-                        </div>
-                    </div>
-
-                    <!-- Filtros y resumen -->
-                    <div class="white-card" style="padding:1rem 1.5rem;">
-                        <div style="display:flex; gap:0.8rem; flex-wrap:wrap; align-items:center; justify-content:space-between;">
-                            <div style="display:flex; gap:0.6rem; flex-wrap:wrap; align-items:center;">
-                                <select id="filtroCatInv" onchange="actualizarInventario()" style="font-size:0.85rem; padding:0.35rem 0.6rem; border:1px solid #d1d5db; border-radius:6px;">
-                                    <option value="">— Todas las categorías —</option>
-                                    <option>Pescados y Mariscos</option>
-                                    <option>Abarrotes</option>
-                                    <option>Líquidos</option>
-                                    <option>Frutas y Verduras</option>
-                                    <option>Congelados</option>
-                                    <option>Aseo</option>
-                                    <option>Servicios</option>
-                                </select>
-                                <input type="text" id="filtroNombreInv" placeholder="🔍 Buscar producto..." oninput="actualizarInventario()" style="font-size:0.85rem; padding:0.35rem 0.7rem; border:1px solid #d1d5db; border-radius:6px; min-width:180px;">
-                            </div>
-                            <span style="font-size:0.82rem; color:var(--gray);" id="inventarioCount">0 productos</span>
-                        </div>
-                    </div>
-
-                    <!-- Grid por categoría -->
-                    <div id="inventarioGrid"></div>
-                </section>
-
-                <section id="pagos" class="section">
-                    <h2>💳 Pagos</h2>
-
-                    <!-- Resumen facturas pendientes -->
-                    <div class="white-card" style="margin-bottom:0;">
-                        <h3 style="margin-bottom:0.8rem; font-size:0.95rem; color:var(--gray);">📋 Facturas Pendientes de Pago</h3>
-                        <div id="pendientesStats" style="display:flex; gap:0.8rem; flex-wrap:wrap;">
-                            <span style="color:var(--gray); font-size:0.9rem;">Cargando...</span>
-                        </div>
-                    </div>
-
-                    <!-- Formulario de registro -->
-                    <div class="white-card">
-                        <div style="margin-bottom:1rem;">
-                            <h3 style="font-size:1rem; color:var(--gray); margin:0 0 0.2rem;">Registrar Pago</h3>
-                            <p style="font-size:0.82rem; color:#9ca3af; margin:0;">Filtra por proveedor → selecciona una o varias facturas → elige medio de pago → guarda.</p>
-                        </div>
-                        <!-- Buscador y selección múltiple de documentos -->
-                        <div class="form-group" style="margin-bottom:0.8rem;">
-                            <label style="font-weight:700; font-size:0.88rem; color:var(--gray); display:block; margin-bottom:0.5rem;">① Seleccionar Documentos a Pagar:</label>
-                            <div style="display:grid; grid-template-columns: 1fr 1fr 2fr auto; gap:0.5rem; margin-bottom:0.6rem; align-items:center;">
-                                <select id="filtroBuscadorTipo" onchange="filtrarDocumentosPago()" style="width:100%;">
-                                    <option value="">— Tipo Doc —</option>
-                                    <option value="factura">Factura</option>
-                                    <option value="guia">Guía Despacho</option>
-                                    <option value="nota_credito">Nota Crédito</option>
-                                </select>
-                                <select id="filtroBuscadorEstado" onchange="filtrarDocumentosPago()" style="width:100%;">
-                                    <option value="pendiente">⏳ Pendiente</option>
-                                    <option value="">— Todos Status —</option>
-                                    <option value="por_vencer">🟠 Por Vencer</option>
-                                    <option value="vencida">🔴 Vencida</option>
-                                    <option value="pagada">✅ Pagada</option>
-                                </select>
-                                <input type="text" id="filtroBuscadorProveedor" placeholder="🔍 Nombre proveedor..." oninput="filtrarDocumentosPago()" style="width:100%;">
-                                <div style="display:flex; gap:0.35rem; align-items:center;">
-                                    <button type="button" onclick="seleccionarTodosVisibles()" title="Seleccionar todos los documentos visibles" style="padding:0.45rem 0.75rem; background:#2563eb; color:white; border:none; border-radius:6px; font-size:0.78rem; font-weight:600; cursor:pointer; white-space:nowrap;">✓ Todos</button>
-                                    <button type="button" onclick="deseleccionarTodos()" title="Deseleccionar todo" style="padding:0.45rem 0.65rem; background:#f3f4f6; color:#6b7280; border:1px solid var(--border); border-radius:6px; font-size:0.78rem; cursor:pointer;">✕</button>
-                                </div>
-                            </div>
-                            <!-- Tabla con checkboxes - IGUAL QUE MÓDULO FACTURAS -->
-                            <table id="resultadosBuscadorPago" class="table" style="margin-top:0.8rem; margin-bottom:0;">
-                                <thead>
-                                    <tr>
-                                        <th style="width:50px;"></th>
-                                        <th>Tipo Doc</th>
-                                        <th>Folio</th>
-                                        <th>Proveedor</th>
-                                        <th>RUT</th>
-                                        <th>Fecha</th>
-                                        <th>Monto</th>
-                                        <th>Estado</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="resultadosBuscadorPagoBody">
-                                    <tr><td colspan="8" style="text-align:center; color:var(--gray); padding:2rem;">Cargando documentos...</td></tr>
-                                </tbody>
-                            </table>
-                            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:0.5rem; flex-wrap:wrap; gap:0.4rem;">
-                                <div id="infoBuscadorPago" style="font-size:0.82rem; color:var(--gray);"></div>
-                            </div>
-                            <div id="resumenSeleccion"></div>
-                        </div>
-
-                        <!-- Campos de pago -->
-                        <div id="pagoFields" class="pago-fields" style="display:block;">
-                            <label style="font-weight:700; font-size:0.88rem; color:var(--gray); display:block; margin-bottom:0.7rem;">② Forma de Pago:</label>
-                            <div class="grid-2">
-                                <div class="form-group">
-                                    <label>Medio de Pago:</label>
-                                    <select id="medioPago" onchange="toggleChequeFields()">
-                                        <option value="transferencia">🏦 Transferencia</option>
-                                        <option value="cheque">📄 Cheque</option>
-                                        <option value="webpay">💳 WebPay</option>
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label>Fecha de Pago:</label>
-                                    <input type="date" id="fechaPago">
-                                </div>
-                            </div>
-
-                            <!-- Sección de cheques (solo si medio = cheque) -->
-                            <div id="chequeSection" style="display:none;">
-                                <div class="cheque-section">
-                                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.8rem; flex-wrap:wrap; gap:0.5rem;">
-                                        <strong style="font-size:0.9rem;">📄 Detalle de Cheques (N°, monto y fecha de canje)</strong>
-                                        <div id="totalCheques" style="font-size:0.85rem; color:var(--gray);"></div>
-                                        <button type="button" class="btn-success" onclick="agregarCheque()">+ Agregar Cheque</button>
-                                    </div>
-                                    <div id="chequesList"></div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div style="display:flex; gap:0.5rem; margin-top:1.2rem; align-items:center; flex-wrap:wrap;">
-                            <button class="btn btn-primary" onclick="guardarPago()" style="width:auto; padding:0.8rem 2rem; font-size:0.95rem;">③ 💾 Guardar Pago</button>
-                            <button class="btn" onclick="limpiarFormPago()" style="width:auto; padding:0.8rem 1.5rem; background:#f3f4f6; color:var(--gray);">🔄 Nueva Operación</button>
-                        </div>
-                        <div id="pagoMsg"></div>
-                    </div>
-
-                    <!-- Filtros -->
-                    <div class="white-card">
-                        <h3 style="margin-bottom: 1rem; font-size: 1rem; color: var(--gray);">🔍 Filtrar Pagos Registrados</h3>
-                        <div style="display:grid; grid-template-columns:1.5fr 1fr 1fr 1fr auto; gap:1rem; align-items:end;">
-                            <div class="form-group" style="margin-bottom:0;">
-                                <label style="font-size:0.85rem; font-weight:600; color:var(--gray); display:block; margin-bottom:0.3rem;">Proveedor:</label>
-                                <input type="text" id="filtroPagosProveedor" placeholder="Nombre proveedor..." oninput="debouncedCargarPagos()" style="padding:0.65rem; width:100%; border:1px solid var(--border); border-radius:6px; font-size:0.9rem;">
-                            </div>
-                            <div class="form-group" style="margin-bottom:0;">
-                                <label style="font-size:0.85rem; font-weight:600; color:var(--gray); display:block; margin-bottom:0.3rem;">Medio de Pago:</label>
-                                <select id="filtroMedio" onchange="cargarPagos()">
-                                    <option value="">— Todos —</option>
-                                    <option value="transferencia">🏦 Transferencia</option>
-                                    <option value="cheque">📄 Cheque</option>
-                                    <option value="webpay">💳 WebPay</option>
-                                </select>
-                            </div>
-                            <div class="form-group" style="margin-bottom:0;">
-                                <label style="font-size:0.85rem; font-weight:600; color:var(--gray); display:block; margin-bottom:0.3rem;">Fecha Desde:</label>
-                                <input type="date" id="filtroDesde" onchange="cargarPagos()">
-                            </div>
-                            <div class="form-group" style="margin-bottom:0;">
-                                <label style="font-size:0.85rem; font-weight:600; color:var(--gray); display:block; margin-bottom:0.3rem;">Fecha Hasta:</label>
-                                <input type="date" id="filtroHasta" onchange="cargarPagos()">
-                            </div>
-                            <button class="btn" onclick="limpiarFiltros()" style="background:#f3f4f6; color:var(--gray);">Limpiar</button>
-                        </div>
-                        <div id="pagosFilterInfo" style="margin-top:0.6rem; font-size:0.82rem; color:var(--gray);"></div>
-                    </div>
-
-                    <!-- Tabla de pagos -->
-                    <table class="table">
-                        <thead>
-                            <tr>
-                                <th>Folio</th>
-                                <th>Fecha</th>
-                                <th>Proveedor</th>
-                                <th>Medio de Pago</th>
-                                <th>Monto</th>
-                                <th>Detalle Cheques</th>
-                            </tr>
-                        </thead>
-                        <tbody id="pagosTable">
-                            <tr><td colspan="6" style="text-align:center; color:var(--gray); padding:2rem;">Sin pagos registrados</td></tr>
-                        </tbody>
-                    </table>
-                </section>
-
-                <section id="configuracion" class="section">
-                    <h2>⚙️ Configuración</h2>
-
-                    <!-- Crear usuario -->
-                    <div class="white-card">
-                        <h3 style="margin-bottom: 1rem; font-size: 1rem; color: var(--gray);">➕ Agregar Nuevo Usuario</h3>
-                        <div class="grid-2">
-                            <div class="form-group">
-                                <label>Nombre:</label>
-                                <input type="text" id="nuevoNombre" placeholder="Nombre completo">
-                            </div>
-                            <div class="form-group">
-                                <label>Email:</label>
-                                <input type="email" id="nuevoEmail" placeholder="correo@empresa.com">
-                            </div>
-                        </div>
-                        <div class="grid-2">
-                            <div class="form-group">
-                                <label>Contraseña:</label>
-                                <input type="password" id="nuevoPassword" placeholder="Contraseña">
-                            </div>
-                            <div class="form-group">
-                                <label>Rol:</label>
-                                <select id="nuevoRol">
-                                    <option value="usuario">👤 Usuario</option>
-                                    <option value="admin">👑 Admin</option>
-                                </select>
-                            </div>
-                        </div>
-                        <button class="btn btn-primary" onclick="crearUsuario()" style="width:auto; padding: 0.8rem 2rem;">Crear Usuario</button>
-                        <div id="usuarioMsg"></div>
-                    </div>
-
-                    <!-- Tabla de usuarios -->
-                    <div class="white-card">
-                        <h3 style="margin-bottom: 1rem; font-size: 1rem; color: var(--gray);">👥 Usuarios del Sistema</h3>
-                        <table class="table">
-                            <thead>
-                                <tr>
-                                    <th>Nombre</th>
-                                    <th>Email</th>
-                                    <th>Rol</th>
-                                    <th>Estado</th>
-                                    <th>Creado</th>
-                                    <th>Acciones</th>
-                                </tr>
-                            </thead>
-                            <tbody id="usuariosTable">
-                                <tr><td colspan="6" style="text-align:center; color:var(--gray); padding:2rem;">Cargando usuarios...</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </section>
-
-                <section id="reportes" class="section">
-                    <h2>📊 Reporte Financiero</h2>
-
-                    <!-- KPIs -->
-                    <div class="kpi-grid">
-                        <div class="kpi-card">
-                            <div class="kpi-label">Total Facturas</div>
-                            <div class="kpi-value" id="rep-total-count" style="font-size:1.5rem;">0</div>
-                            <div style="font-size:0.85rem; color:var(--gray); margin-top:0.3rem;" id="rep-total-monto">$0</div>
-                        </div>
-                        <div class="kpi-card">
-                            <div class="kpi-label">Pendientes</div>
-                            <div class="kpi-value" id="rep-pendiente-count" style="font-size:1.5rem; color:#92400e;">0</div>
-                            <div style="font-size:0.85rem; color:var(--gray); margin-top:0.3rem;" id="rep-pendiente-monto">$0</div>
-                        </div>
-                        <div class="kpi-card" style="border-left-color:#f97316;">
-                            <div class="kpi-label">Por Vencer</div>
-                            <div class="kpi-value" id="rep-porvencer-count" style="font-size:1.5rem; color:#f97316;">0</div>
-                            <div style="font-size:0.85rem; color:var(--gray); margin-top:0.3rem;" id="rep-porvencer-monto">$0</div>
-                        </div>
-                        <div class="kpi-card" style="border-left-color:#ef4444;">
-                            <div class="kpi-label">Vencidas</div>
-                            <div class="kpi-value" id="rep-vencida-count" style="font-size:1.5rem; color:#ef4444;">0</div>
-                            <div style="font-size:0.85rem; color:var(--gray); margin-top:0.3rem;" id="rep-vencida-monto">$0</div>
-                        </div>
-                        <div class="kpi-card" style="border-left-color:#10b981;">
-                            <div class="kpi-label">Pagadas</div>
-                            <div class="kpi-value" id="rep-pagada-count" style="font-size:1.5rem; color:#10b981;">0</div>
-                            <div style="font-size:0.85rem; color:var(--gray); margin-top:0.3rem;" id="rep-pagada-monto">$0</div>
-                        </div>
-                    </div>
-
-                    <div class="grid-2">
-                        <div class="white-card">
-                            <h3 style="font-size:1rem; margin-bottom:1rem;">📉 Distribución por Estado</h3>
-                            <div id="rep-distribucion">Cargando...</div>
-                        </div>
-                        <div class="white-card">
-                            <h3 style="font-size:1rem; margin-bottom:1rem;">💰 Pagos por Medio</h3>
-                            <div id="rep-medios">Cargando...</div>
-                        </div>
-                    </div>
-
-                    <!-- Filtro y Detalle de Facturas -->
-                    <div class="white-card">
-                        <div class="card-header-actions">
-                            <h3 style="font-size:1rem;">🔍 Detalle de Facturas</h3>
-                            <button class="btn-export" onclick="exportarDetalleExcel()">📥 Exportar Excel</button>
-                        </div>
-                        <div class="filtros-reporte">
-                            <div class="form-group" style="margin-bottom:0;">
-                                <label style="font-size:0.82rem; font-weight:600; color:var(--gray); display:block; margin-bottom:0.3rem;">Proveedor:</label>
-                                <input type="text" id="rep-f-proveedor" placeholder="Nombre proveedor..." onchange="aplicarFiltrosReporte()" oninput="aplicarFiltrosReporte()" style="padding:0.7rem;">
-                            </div>
-                            <div class="form-group" style="margin-bottom:0;">
-                                <label style="font-size:0.82rem; font-weight:600; color:var(--gray); display:block; margin-bottom:0.3rem;">Estado:</label>
-                                <select id="rep-f-estado" onchange="aplicarFiltrosReporte()" style="padding:0.7rem;">
-                                    <option value="">— Todos —</option>
-                                    <option value="pendiente">⏳ Pendiente</option>
-                                    <option value="por_vencer">🟠 Por Vencer</option>
-                                    <option value="vencida">🔴 Vencida</option>
-                                    <option value="pagada">✅ Pagada</option>
-                                </select>
-                            </div>
-                            <div class="form-group" style="margin-bottom:0;">
-                                <label style="font-size:0.82rem; font-weight:600; color:var(--gray); display:block; margin-bottom:0.3rem;">Fecha Desde:</label>
-                                <input type="date" id="rep-f-desde" onchange="aplicarFiltrosReporte()" style="padding:0.7rem;">
-                            </div>
-                            <div class="form-group" style="margin-bottom:0;">
-                                <label style="font-size:0.82rem; font-weight:600; color:var(--gray); display:block; margin-bottom:0.3rem;">Fecha Hasta:</label>
-                                <input type="date" id="rep-f-hasta" onchange="aplicarFiltrosReporte()" style="padding:0.7rem;">
-                            </div>
-                            <div style="display:flex; gap:0.5rem; align-items:flex-end;">
-                                <button class="btn" onclick="limpiarFiltrosReporte()" style="width:auto; padding:0.7rem 0.9rem; background:#f3f4f6; color:var(--gray);">Limpiar</button>
-                            </div>
-                        </div>
-                        <div id="rep-filtro-info" style="font-size:0.82rem; color:var(--gray); margin-bottom:0.5rem;"></div>
-                        <table class="table" style="margin-bottom:0;">
-                            <thead>
-                                <tr>
-                                    <th>Folio</th>
-                                    <th>Proveedor</th>
-                                    <th>RUT</th>
-                                    <th>Fecha</th>
-                                    <th>Monto</th>
-                                    <th>Estado</th>
-                                    <th>Medio Pago</th>
-                                    <th>Fecha Pago</th>
-                                </tr>
-                            </thead>
-                            <tbody id="rep-detalle-table">
-                                <tr><td colspan="8" style="text-align:center; color:var(--gray); padding:2rem;">Aplica filtros para ver el detalle</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <!-- Resumen por Proveedor -->
-                    <div class="white-card">
-                        <div class="card-header-actions">
-                            <h3 style="font-size:1rem;">🏢 Resumen por Proveedor</h3>
-                            <button class="btn-export" onclick="exportarProveedoresExcel()">📥 Exportar Excel</button>
-                        </div>
-                        <table class="table" style="margin-bottom:0;">
-                            <thead>
-                                <tr>
-                                    <th>Proveedor</th>
-                                    <th>RUT</th>
-                                    <th style="text-align:center;">Facturas</th>
-                                    <th>Monto Total</th>
-                                    <th>Pendiente / Vencido</th>
-                                    <th>Pagado</th>
-                                </tr>
-                            </thead>
-                            <tbody id="rep-proveedores">
-                                <tr><td colspan="6" style="text-align:center; color:var(--gray);">Sin datos</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <!-- REPORTE FLUJO DE CHEQUES EMITIDOS -->
-                    <div class="white-card">
-                        <div class="card-header-actions">
-                            <h3 style="font-size:1rem;">💳 Flujo de Cheques Emitidos</h3>
-                            <button class="btn-export" onclick="exportarChequesExcel()">📥 Exportar Excel</button>
-                        </div>
-                        <div class="filtros-reporte" style="margin-bottom:1rem;">
-                            <div class="form-group" style="margin-bottom:0;">
-                                <label style="font-size:0.82rem; font-weight:600; color:var(--gray); display:block; margin-bottom:0.3rem;">Estado Cheque:</label>
-                                <select id="cheques-f-estado" style="padding:0.7rem;">
-                                    <option value="">— Todos —</option>
-                                    <option value="pendiente">⏳ Pendiente</option>
-                                    <option value="por_vencer">🟠 Por Vencer</option>
-                                    <option value="vencida">🔴 Vencida</option>
-                                </select>
-                            </div>
-                            <div class="form-group" style="margin-bottom:0;">
-                                <label style="font-size:0.82rem; font-weight:600; color:var(--gray); display:block; margin-bottom:0.3rem;">Desde:</label>
-                                <input type="date" id="cheques-f-desde" style="padding:0.7rem;">
-                            </div>
-                            <div class="form-group" style="margin-bottom:0;">
-                                <label style="font-size:0.82rem; font-weight:600; color:var(--gray); display:block; margin-bottom:0.3rem;">Hasta:</label>
-                                <input type="date" id="cheques-f-hasta" style="padding:0.7rem;">
-                            </div>
-                            <div style="display:flex; gap:0.5rem; align-items:flex-end;">
-                                <button class="btn btn-primary" onclick="filtrarCheques()" style="width:auto; padding:0.7rem 1.2rem;">🔍 Filtrar</button>
-                                <button class="btn" onclick="limpiarFiltrosCheques()" style="width:auto; padding:0.7rem 0.9rem; background:#f3f4f6; color:var(--gray);">✕</button>
-                            </div>
-                        </div>
-                        <div id="cheques-info" style="font-size:0.82rem; color:var(--gray); margin-bottom:0.8rem; padding:0.8rem; background:#f9fafb; border-radius:6px;"></div>
-                        <table class="table" style="margin-bottom:0;">
-                            <thead>
-                                <tr>
-                                    <th>N° Cheque</th>
-                                    <th>Proveedor</th>
-                                    <th>Monto</th>
-                                    <th>Fecha Vencimiento</th>
-                                    <th>Estado</th>
-                                    <th>Días</th>
-                                </tr>
-                            </thead>
-                            <tbody id="rep-cheques-table">
-                                <tr><td colspan="6" style="text-align:center; color:var(--gray); padding:2rem;">Cargando cheques...</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <!-- REPORTE RESUMEN DE VENCIMIENTOS -->
-                    <div class="white-card">
-                        <div class="card-header-actions">
-                            <h3 style="font-size:1rem;">📅 Resumen de Vencimientos de Cheques</h3>
-                            <button class="btn-export" onclick="exportarResumenVencimientosExcel()">📥 Exportar Excel</button>
-                        </div>
-                        <p style="color:var(--gray); font-size:0.9rem; margin-bottom:1rem;">Consolidado de cheques por fecha de vencimiento para planificación de flujo de caja</p>
-                        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:1rem; margin-bottom:1.5rem;" id="cheques-resumen-kpi">
-                            <!-- Se llena dinámicamente -->
-                        </div>
-                        <table class="table" style="margin-bottom:0;">
-                            <thead>
-                                <tr>
-                                    <th>Fecha Vencimiento</th>
-                                    <th style="text-align:center;">Cantidad Cheques</th>
-                                    <th>Monto Total</th>
-                                    <th>Estado</th>
-                                    <th>Días Restantes</th>
-                                </tr>
-                            </thead>
-                            <tbody id="rep-resumen-vencimientos">
-                                <tr><td colspan="5" style="text-align:center; color:var(--gray); padding:2rem;">Cargando resumen...</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </section>
-            </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Proveedor *</label>
+            <select id="invoice-provider" required>
+              <option value="">Selecciona proveedor</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Categoría *</label>
+            <select id="invoice-category" required>
+              <option value="">Selecciona categoría</option>
+            </select>
+          </div>
         </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Monto *</label>
+            <input type="number" id="invoice-amount" step="0.01" required>
+          </div>
+          <div class="form-group">
+            <label>Fecha de Vencimiento</label>
+            <input type="date" id="invoice-due-date">
+          </div>
+        </div>
+
+        <div class="form-row full">
+          <div class="form-group">
+            <label>Descripción</label>
+            <textarea id="invoice-description" rows="3"></textarea>
+          </div>
+        </div>
+
+        <button type="submit" class="primary">Registrar Factura</button>
+      </form>
+
+      <h3 style="margin-top: 30px; color: #667eea;">Facturas Registradas</h3>
+      <div id="invoices-list"></div>
     </div>
 
-    <script>
-        const API = '/api';
-        let token = null;
-        let currentUser = null;
-        let facturas = [];
-        let productos = [];
-        let repDetalleData  = [];   // facturas filtradas para exportar
-        let proveedoresData = [];   // resumen proveedores para exportar
+    <!-- PROVEEDORES -->
+    <div id="providers" class="section">
+      <h2>Gestión de Proveedores</h2>
 
-        // ===== ESTADO CALCULADO (lógica de vencimiento) =====
-        function calcularEstado(f) {
-            if (f.estado === 'pagada') return 'pagada';
-            const hoy  = new Date();
-            const fecha = new Date((f.fecha || '') + 'T00:00:00');
-            if (isNaN(fecha.getTime())) return f.estado || 'pendiente';
-            const dias = Math.floor((hoy - fecha) / (1000 * 60 * 60 * 24));
-            if (dias >= 30) return 'vencida';
-            if (dias >= 25) return 'por_vencer';
-            return 'pendiente';
-        }
-        function labelEstado(estado) {
-            return ({ pagada: 'Pagada', pendiente: 'Pendiente', por_vencer: 'Por Vencer', vencida: 'Vencida' })[estado] || estado;
-        }
+      <form id="provider-form">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Nombre *</label>
+            <input type="text" id="provider-name" required>
+          </div>
+          <div class="form-group">
+            <label>RUT</label>
+            <input type="text" id="provider-rut" placeholder="12.345.678-9">
+          </div>
+        </div>
 
-        async function login(e) {
-            e.preventDefault();
-            const btnLogin = e.target.querySelector('button');
-            btnLogin.disabled = true;
-            btnLogin.textContent = '⏳ Ingresando...';
+        <div class="form-row">
+          <div class="form-group">
+            <label>Email</label>
+            <input type="email" id="provider-email">
+          </div>
+          <div class="form-group">
+            <label>Teléfono</label>
+            <input type="tel" id="provider-phone">
+          </div>
+        </div>
 
-            try {
-                const res = await fetch(`${API}/auth/login`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        email: document.getElementById('email').value,
-                        password: document.getElementById('password').value
-                    })
-                });
-                const data = await res.json();
-                if (data.success) {
-                    token = data.token;
-                    currentUser = data.user;
-                    localStorage.setItem('token', token);
-                    localStorage.setItem('currentUser', JSON.stringify(data.user));
-                    document.getElementById('authOverlay').classList.add('hidden');
-                    document.getElementById('appContainer').style.display = 'flex';
-                    if (currentUser && currentUser.rol === 'admin') {
-                        document.getElementById('navConfiguracion').style.display = 'block';
-                    }
+        <div class="form-row full">
+          <div class="form-group">
+            <label>Dirección</label>
+            <input type="text" id="provider-address">
+          </div>
+        </div>
 
-                    // Cargar datos con timeout para evitar que se quede pegado
-                    Promise.race([
-                        cargarDatos(),
-                        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000))
-                    ]).catch(err => {
-                        console.warn('Datos cargados con retraso:', err.message);
-                    });
+        <button type="submit" class="primary">Registrar Proveedor</button>
+      </form>
 
-                    setTimeout(setupDropZone, 300);
-                } else {
-                    alert(data.message || 'Email o contraseña incorrectos');
-                    btnLogin.disabled = false;
-                    btnLogin.textContent = '🔓 Ingresar';
-                }
-            } catch (error) {
-                alert('Error de conexión al servidor: ' + error.message);
-                btnLogin.disabled = false;
-                btnLogin.textContent = '🔓 Ingresar';
-            }
-        }
+      <h3 style="margin-top: 30px; color: #667eea;">Proveedores Registrados</h3>
+      <div id="providers-list"></div>
+    </div>
 
-        function logout() {
-            if (confirm('¿Cerrar sesión?')) {
-                localStorage.removeItem('token');
-                localStorage.removeItem('currentUser');
-                location.reload();
-            }
-        }
+    <!-- PAGOS -->
+    <div id="payments" class="section">
+      <h2>Registrar Pagos</h2>
 
-        function cambiarSeccion(id) {
-            document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-            document.getElementById(id).classList.add('active');
-            event.target.classList.add('active');
-            if (id === 'pagos') {
-                cargarPagos();
-                filtrarDocumentosPago();
-                mostrarPendientesPagos();
-            }
-            if (id === 'configuracion') cargarUsuarios();
-            if (id === 'reportes')      renderReportes();
-        }
+      <form id="payment-form">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Factura *</label>
+            <select id="payment-invoice" required>
+              <option value="">Selecciona factura</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Monto a Pagar *</label>
+            <input type="number" id="payment-amount" step="0.01" required>
+          </div>
+        </div>
 
-        async function cargarDatos() {
-            await cargarFacturas();
-            await cargarProductos();
-            await cargarCheques();
-        }
+        <div class="form-row">
+          <div class="form-group">
+            <label>Medio de Pago *</label>
+            <select id="payment-method" required>
+              <option value="">Selecciona medio</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Fecha de Pago *</label>
+            <input type="date" id="payment-date" required>
+          </div>
+        </div>
 
-        async function cargarFacturas() {
-            try {
-                const res = await fetch(`${API}/facturas`);
-                const data = await res.json();
-                facturas = data.facturas || [];
-                mostrarFacturas();
-            } catch (error) { console.error(error); }
-        }
+        <div class="form-row full">
+          <div class="form-group">
+            <label>Referencia (cheque, transferencia, etc.)</label>
+            <input type="text" id="payment-reference">
+          </div>
+        </div>
 
-        async function cargarProductos() {
-            try {
-                const res = await fetch(`${API}/productos`);
-                const data = await res.json();
-                productos = data.productos || [];
-                actualizarInventario();
-            } catch (error) { console.error(error); }
-        }
+        <div class="form-row full">
+          <div class="form-group">
+            <label>Notas</label>
+            <textarea id="payment-notes" rows="3"></textarea>
+          </div>
+        </div>
 
-        let facturasSortDir = 'desc'; // desc = más reciente primero
-        let filtroPeriodo   = 'todos'; // periodo activo en módulo Facturas
+        <button type="submit" class="primary">Registrar Pago</button>
+      </form>
 
-        function mostrarFacturas() {
-            const estados     = facturas.map(f => calcularEstado(f));
-            const cPendiente  = estados.filter(e => e === 'pendiente').length;
-            const cPorVencer  = estados.filter(e => e === 'por_vencer').length;
-            const cVencidas   = estados.filter(e => e === 'vencida').length;
-            const cPagadas    = estados.filter(e => e === 'pagada').length;
-            const total       = facturas.reduce((sum, f) => sum + (f.monto || 0), 0);
+      <h3 style="margin-top: 30px; color: #667eea;">Pagos Registrados</h3>
+      <div id="payments-list"></div>
+    </div>
 
-            document.getElementById('kpi-total').textContent      = facturas.length;
-            document.getElementById('kpi-monto').textContent      = '$' + total.toLocaleString('es-CL');
-            document.getElementById('kpi-pendientes').textContent = cPendiente + cPorVencer + cVencidas;
-            document.getElementById('kpi-pagadas').textContent    = cPagadas;
-            document.getElementById('kpi-por-vencer').textContent = cPorVencer;
-            document.getElementById('kpi-vencidas').textContent   = cVencidas;
+    <!-- CHEQUES -->
+    <div id="checks" class="section">
+      <h2>Gestión de Cheques</h2>
 
-            // Dashboard: últimas 10 ordenadas por fecha desc
-            const tipoIcono = { factura:'🧾', guia:'🚚', nota_credito:'📝' };
-            const tipoLabel = { factura:'Factura', guia:'Guía Despacho', nota_credito:'Nota Crédito' };
-            const dashHtml = [...facturas]
-                .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''))
-                .slice(0, 10)
-                .map(f => {
-                    const est  = calcularEstado(f);
-                    const tipo = (f.tipo_doc || f.tipo || 'factura').toLowerCase();
-                    const icono = tipoIcono[tipo] || '🧾';
-                    const tLabel = tipoLabel[tipo] || 'Factura';
-                    return `<tr>
-                        <td><span style="white-space:nowrap;">${icono} ${tLabel}</span></td>
-                        <td style="font-weight:600;">${f.folio}</td>
-                        <td style="max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${f.proveedor || '-'}</td>
-                        <td>${f.fecha}</td>
-                        <td style="font-weight:600;">$${(f.monto || 0).toLocaleString('es-CL')}</td>
-                        <td><span class="state-badge ${est}">${labelEstado(est)}</span></td>
-                    </tr>`;
-                }).join('');
-            document.getElementById('dashboardTable').innerHTML = dashHtml || '<tr><td colspan="6" style="text-align:center; color:var(--gray); padding:1.5rem;">Sin documentos</td></tr>';
+      <form id="check-form">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Número de Cheque *</label>
+            <input type="text" id="check-number" required>
+          </div>
+          <div class="form-group">
+            <label>Monto *</label>
+            <input type="number" id="check-amount" step="0.01" required>
+          </div>
+        </div>
 
-            // Tabla facturas: con filtro y ordenamiento
-            renderTablaFacturas();
+        <div class="form-row">
+          <div class="form-group">
+            <label>Banco</label>
+            <input type="text" id="check-bank">
+          </div>
+          <div class="form-group">
+            <label>Librador</label>
+            <input type="text" id="check-issuer">
+          </div>
+        </div>
 
-            filtrarDocumentosPago();
-            mostrarPendientesPagos();
-        }
+        <div class="form-row">
+          <div class="form-group">
+            <label>Fecha de Emisión *</label>
+            <input type="date" id="check-issue-date" required>
+          </div>
+          <div class="form-group">
+            <label>Fecha de Vencimiento *</label>
+            <input type="date" id="check-due-date" required>
+          </div>
+        </div>
 
-        // Rastrear facturas seleccionadas para pago agrupado
-        let facturasSeleccionadas = [];
+        <button type="submit" class="primary">Registrar Cheque</button>
+      </form>
 
-        function filtrarDocumentosPago() {
-            const tipo      = (document.getElementById('filtroBuscadorTipo')?.value || '').toLowerCase();
-            const estadoFil = (document.getElementById('filtroBuscadorEstado')?.value || '').toLowerCase();
-            const prov      = (document.getElementById('filtroBuscadorProveedor')?.value || '').toLowerCase().trim();
+      <h3 style="margin-top: 30px; color: #667eea;">Cheques Registrados</h3>
+      <div id="checks-list"></div>
+    </div>
 
-            const resultado = facturas.filter(f => {
-                const tipoDoc = (f.tipo_doc || f.tipo || '').toLowerCase();
-                const est     = calcularEstado(f);
-                if (tipo && !tipoDoc.includes(tipo)) return false;
-                if (estadoFil && est !== estadoFil) return false;
-                if (prov && !(f.proveedor || '').toLowerCase().includes(prov)) return false;
-                return true;
-            });
+    <!-- REPORTES -->
+    <div id="reports" class="section">
+      <h2>Reportes y Análisis</h2>
 
-            const container = document.getElementById('resultadosBuscadorPago');
-            const infoEl = document.getElementById('infoBuscadorPago');
-            const hayFiltros = tipo || estadoFil || prov;
+      <div class="form-row">
+        <div class="form-group">
+          <label>Filtrar por Proveedor</label>
+          <select id="report-provider">
+            <option value="">Todos los proveedores</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Filtrar por Fecha Desde</label>
+          <input type="date" id="report-date-from">
+        </div>
+      </div>
 
-            // Crear tabla con checkboxes - IGUAL AL MÓDULO FACTURAS
-            const tbody = document.getElementById('resultadosBuscadorPagoBody');
-            if (resultado.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:var(--gray); padding:2rem;">No hay documentos disponibles</td></tr>';
-            } else {
-                tbody.innerHTML = resultado.map(f => {
-                    const est      = calcularEstado(f);
-                    const estLabel = est === 'vencida' ? '🔴 Vencida' : est === 'por_vencer' ? '🟠 Por Vencer' : est === 'pagada' ? '✅ Pagada' : '⏳ Pendiente';
-                    const tipoLabel = (f.tipo_doc || f.tipo || 'Factura');
-                    const checked  = facturasSeleccionadas.includes(f.id) ? 'checked' : '';
-                    return `<tr>
-                        <td style="text-align:center;">
-                            <input type="checkbox" id="chk_${f.id}" ${checked} onchange="toggleFacturaSeleccion(${f.id})" style="cursor:pointer;">
-                        </td>
-                        <td style="font-size:0.82rem; color:var(--gray);">${tipoLabel}</td>
-                        <td><strong>${f.folio}</strong></td>
-                        <td>${f.proveedor || '-'}</td>
-                        <td style="font-size:0.82rem; color:var(--gray);">${f.rut || '-'}</td>
-                        <td>${f.fecha || '-'}</td>
-                        <td style="font-weight:700; color:var(--primary);">$${(f.monto || 0).toLocaleString('es-CL')}</td>
-                        <td><span class="state-badge ${est}">${estLabel}</span></td>
-                    </tr>`;
-                }).join('');
-            }
+      <div id="reports-container"></div>
+    </div>
+  </div>
 
-            if (infoEl) {
-                infoEl.textContent = hayFiltros
-                    ? `${resultado.length} documento${resultado.length !== 1 ? 's' : ''} encontrado${resultado.length !== 1 ? 's' : ''}`
-                    : `${resultado.length} documentos en total`;
-            }
-            actualizarResumenSeleccion();
-        }
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    // Configuración de Supabase
+    const SUPABASE_URL = 'https://lmathqteohlpkefnzjze.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_QzRnakg8vh7LhcTj_N4Uzw_Sxz2ddxh';
 
-        function toggleFacturaSeleccion(id) {
-            const chk = document.getElementById(`chk_${id}`);
-            if (chk.checked) {
-                if (!facturasSeleccionadas.includes(id)) facturasSeleccionadas.push(id);
-            } else {
-                facturasSeleccionadas = facturasSeleccionadas.filter(fid => fid !== id);
-            }
-            actualizarResumenSeleccion();
-        }
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        function seleccionarTodosVisibles() {
-            const tbody = document.getElementById('resultadosBuscadorPagoBody');
-            if (!tbody) return;
-            tbody.querySelectorAll('input[type="checkbox"][id^="chk_"]').forEach(chk => {
-                const id = parseInt(chk.id.replace('chk_', ''));
-                if (!isNaN(id)) {
-                    chk.checked = true;
-                    if (!facturasSeleccionadas.includes(id)) facturasSeleccionadas.push(id);
-                }
-            });
-            actualizarResumenSeleccion();
-        }
+    // Estado global
+    const state = {
+      invoices: [],
+      providers: [],
+      payments: [],
+      checks: [],
+      categories: [],
+      paymentMethods: []
+    };
 
-        function deseleccionarTodos() {
-            document.querySelectorAll('#resultadosBuscadorPagoBody input[type="checkbox"]').forEach(chk => chk.checked = false);
-            facturasSeleccionadas = [];
-            actualizarResumenSeleccion();
-        }
+    // Inicialización
+    document.addEventListener('DOMContentLoaded', async () => {
+      await loadInitialData();
+      setupEventListeners();
+      loadDashboard();
+    });
 
-        function actualizarResumenSeleccion() {
-            const resEl = document.getElementById('resumenSeleccion');
-            if (!resEl) return;
-            if (!facturasSeleccionadas.length) {
-                resEl.innerHTML = '';
-                actualizarTotalCheques();
-                return;
-            }
-            const total = facturasSeleccionadas.reduce((s, id) => {
-                const f = facturas.find(x => x.id === id);
-                return s + (f ? f.monto || 0 : 0);
-            }, 0);
+    // Cargar datos iniciales
+    async function loadInitialData() {
+      try {
+        // Cargar categorías
+        const { data: categories } = await supabase.from('categories').select('*');
+        state.categories = categories || [];
 
-            // Agrupar por proveedor
-            const porProv = {};
-            facturasSeleccionadas.forEach(id => {
-                const f = facturas.find(x => x.id === id);
-                if (!f) return;
-                const k = f.proveedor || 'Sin nombre';
-                if (!porProv[k]) porProv[k] = { n: 0, monto: 0 };
-                porProv[k].n++;
-                porProv[k].monto += (f.monto || 0);
-            });
+        // Cargar medios de pago
+        const { data: paymentMethods } = await supabase.from('payment_methods').select('*');
+        state.paymentMethods = paymentMethods || [];
 
-            const provLines = Object.entries(porProv).map(([prov, d]) =>
-                `<span style="background:#dbeafe; color:#1e40af; border-radius:4px; padding:0.1rem 0.5rem; font-size:0.8rem; font-weight:600;">${prov}</span>
-                 <span style="font-size:0.8rem; color:#374151;">${d.n} doc${d.n > 1 ? 's' : ''} — $${d.monto.toLocaleString('es-CL')}</span>`
-            ).join('<br>');
+        // Cargar proveedores
+        const { data: providers } = await supabase.from('providers').select('*').order('name');
+        state.providers = providers || [];
 
-            resEl.innerHTML = `<div style="background:#eff6ff; border:1.5px solid #2563eb; border-radius:8px; padding:0.7rem 1rem; margin-top:0.6rem; display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap;">
-                <div>
-                    <div style="font-weight:700; color:#1e40af; font-size:0.92rem; margin-bottom:0.3rem;">✅ ${facturasSeleccionadas.length} documento${facturasSeleccionadas.length !== 1 ? 's' : ''} seleccionado${facturasSeleccionadas.length !== 1 ? 's' : ''}</div>
-                    <div style="display:flex; flex-direction:column; gap:0.25rem;">${provLines}</div>
-                </div>
-                <div style="text-align:right; flex-shrink:0;">
-                    <div style="font-size:0.8rem; color:#6b7280;">Total a pagar</div>
-                    <div style="font-size:1.25rem; font-weight:800; color:#1e40af;">$${total.toLocaleString('es-CL')}</div>
-                    <button type="button" onclick="deseleccionarTodos()" style="margin-top:0.3rem; font-size:0.75rem; background:none; border:none; color:#9ca3af; cursor:pointer; text-decoration:underline;">Deseleccionar todo</button>
-                </div>
-            </div>`;
+        // Cargar facturas
+        const { data: invoices } = await supabase
+          .from('invoices')
+          .select('*, providers(name), categories(name)')
+          .order('date', { ascending: false });
+        state.invoices = invoices || [];
 
-            actualizarTotalCheques();
-        }
+        // Cargar pagos
+        const { data: payments } = await supabase
+          .from('payments')
+          .select('*, invoices(invoice_number), payment_methods(name)')
+          .order('payment_date', { ascending: false });
+        state.payments = payments || [];
 
-        function getPeriodoDates(periodo) {
-            const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
-            const fmt = d => d.toISOString().split('T')[0];
-            if (periodo === 'semana_actual') {
-                const dow = hoy.getDay() || 7;
-                const lunes = new Date(hoy); lunes.setDate(hoy.getDate() - (dow - 1));
-                const domingo = new Date(lunes); domingo.setDate(lunes.getDate() + 6);
-                return { desde: fmt(lunes), hasta: fmt(domingo) };
-            }
-            if (periodo === 'semana_anterior') {
-                const dow = hoy.getDay() || 7;
-                const lunesEsta = new Date(hoy); lunesEsta.setDate(hoy.getDate() - (dow - 1));
-                const lunesAnt = new Date(lunesEsta); lunesAnt.setDate(lunesEsta.getDate() - 7);
-                const domAnt = new Date(lunesAnt); domAnt.setDate(lunesAnt.getDate() + 6);
-                return { desde: fmt(lunesAnt), hasta: fmt(domAnt) };
-            }
-            if (periodo === 'mes_actual') {
-                return { desde: fmt(new Date(hoy.getFullYear(), hoy.getMonth(), 1)),
-                         hasta: fmt(new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0)) };
-            }
-            if (periodo === 'mes_anterior') {
-                return { desde: fmt(new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1)),
-                         hasta: fmt(new Date(hoy.getFullYear(), hoy.getMonth(), 0)) };
-            }
-            return { desde: '', hasta: '' };
-        }
+        // Cargar cheques
+        const { data: checks } = await supabase
+          .from('checks')
+          .select('*')
+          .order('due_date');
+        state.checks = checks || [];
 
-        function filtrarPorPeriodo(periodo) {
-            filtroPeriodo = periodo;
-            document.querySelectorAll('.btn-periodo').forEach(b => b.classList.remove('active'));
-            const btn = document.getElementById('btn-periodo-' + periodo);
-            if (btn) btn.classList.add('active');
-            const custom = document.getElementById('filtros-personalizados');
-            if (custom) custom.style.display = periodo === 'personalizado' ? 'flex' : 'none';
-            renderTablaFacturas();
-        }
+        // Poblar selectores
+        populateSelects();
+        renderTables();
+        showAlert('Datos cargados correctamente', 'success');
+      } catch (error) {
+        console.error('Error cargando datos:', error);
+        showAlert('Error al cargar los datos: ' + error.message, 'error');
+      }
+    }
 
-        function renderTablaFacturas() {
-            const texto = (document.getElementById('filtroProveedor')?.value || '').toLowerCase().trim();
-            const categoria = (document.getElementById('filtroCategoria')?.value || '').trim();
+    function populateSelects() {
+      // Categorías
+      const categorySelect = document.getElementById('invoice-category');
+      const reportProviderSelect = document.getElementById('report-provider');
 
-            // Rango de fechas según período activo
-            let desde = '', hasta = '';
-            if (filtroPeriodo === 'personalizado') {
-                desde = document.getElementById('filtroDesdeFacturas')?.value || '';
-                hasta = document.getElementById('filtroHastaFacturas')?.value || '';
-            } else if (filtroPeriodo !== 'todos') {
-                const rng = getPeriodoDates(filtroPeriodo);
-                desde = rng.desde; hasta = rng.hasta;
-            }
+      categorySelect.innerHTML = '<option value="">Selecciona categoría</option>';
+      state.categories.forEach(cat => {
+        categorySelect.innerHTML += `<option value="${cat.id}">${cat.name}</option>`;
+      });
 
-            let lista = [...facturas];
-            if (texto)  lista = lista.filter(f => (f.proveedor || '').toLowerCase().includes(texto));
-            if (desde)  lista = lista.filter(f => (f.fecha || '') >= desde);
-            if (hasta)  lista = lista.filter(f => (f.fecha || '') <= hasta);
-            if (categoria) lista = lista.filter(f => (f.categoria || '') === categoria);
+      // Proveedores
+      const providerSelect = document.getElementById('invoice-provider');
+      providerSelect.innerHTML = '<option value="">Selecciona proveedor</option>';
+      state.providers.forEach(prov => {
+        providerSelect.innerHTML += `<option value="${prov.id}">${prov.name}</option>`;
+        reportProviderSelect.innerHTML += `<option value="${prov.id}">${prov.name}</option>`;
+      });
 
-            // Ordenar por fecha
-            lista.sort((a, b) => {
-                const cmp = (a.fecha || '').localeCompare(b.fecha || '');
-                return facturasSortDir === 'asc' ? cmp : -cmp;
-            });
+      // Medios de pago
+      const paymentMethodSelect = document.getElementById('payment-method');
+      paymentMethodSelect.innerHTML = '<option value="">Selecciona medio</option>';
+      state.paymentMethods.forEach(method => {
+        paymentMethodSelect.innerHTML += `<option value="${method.id}">${method.name}</option>`;
+      });
 
-            const getCategoriaEmoji = (cat) => {
-                const cats = {
-                    'Servicios': '🔧',
-                    'Mariscos y Pescados': '🦞',
-                    'Abarrotes': '🛒',
-                    'Congelados': '❄️',
-                    'Envases': '📦',
-                    'Aseo y Limpieza': '🧹',
-                    'Líquidos': '🍷',
-                    'Equipos': '⚙️'
-                };
-                return cats[cat] || '📋';
-            };
+      // Facturas pendientes para pagos
+      const invoiceSelect = document.getElementById('payment-invoice');
+      invoiceSelect.innerHTML = '<option value="">Selecciona factura</option>';
+      state.invoices.filter(inv => inv.status !== 'pagado').forEach(inv => {
+        invoiceSelect.innerHTML += `<option value="${inv.id}">${inv.invoice_number} - $${inv.amount}</option>`;
+      });
+    }
 
-            const html = lista.map(f => {
-                const est = calcularEstado(f);
-                const catEmoji = getCategoriaEmoji(f.categoria);
-                const catText = f.categoria ? `${catEmoji} ${f.categoria}` : '<span style="color:var(--gray);">Sin asignar</span>';
-                const isChecked = facturasSeleccionadas.includes(f.id);
-                return `<tr style="${isChecked ? 'background:#e3f2fd;' : ''}">
-                    <td style="width:40px;"><input type="checkbox" class="checkFactura" data-id="${f.id}" ${isChecked ? 'checked' : ''} onchange="actualizarSeleccion()" style="cursor:pointer; width:18px; height:18px;"></td>
-                    <td style="font-size:0.82rem; color:var(--gray);">${f.tipo_doc || '-'}</td>
-                    <td>${f.folio}</td>
-                    <td>${f.proveedor || '-'}</td>
-                    <td style="font-size:0.82rem; color:var(--gray);">${f.rut || '-'}</td>
-                    <td>${f.fecha}</td>
-                    <td>$${(f.monto || 0).toLocaleString('es-CL')}</td>
-                    <td style="font-size:0.9rem;">${catText}</td>
-                    <td><span class="state-badge ${est}">${labelEstado(est)}</span></td>
-                    <td style="display:flex; gap:0.4rem;">
-                        <button onclick="abrirModalCategoria(${f.id}, '${f.folio}')" class="btn btn-primary" style="width:auto; padding:0.4rem 0.8rem; font-size:0.8rem;">Categoría</button>
-                        <button onclick="eliminarRegistro(${f.id}, '${f.folio}')" class="btn" style="width:auto; padding:0.4rem 0.8rem; font-size:0.8rem; background:#ef4444; color:white; border:none; border-radius:6px; cursor:pointer;">🗑️ Eliminar</button>
-                    </td>
-                </tr>`;
-            }).join('');
-
-            document.getElementById('facturasTable').innerHTML = html || '<tr><td colspan="10" style="text-align: center; color:var(--gray);">Sin resultados</td></tr>';
-
-            // Mostrar/ocultar controles masivos
-            const controles = document.getElementById('controlesMasivos');
-            if (controles) {
-                controles.style.display = facturasSeleccionadas.length > 0 ? 'block' : 'none';
-            }
-
-            // Actualizar checkbox de "seleccionar todos"
-            const checkTodos = document.getElementById('checkTodos');
-            if (checkTodos && lista.length > 0) {
-                checkTodos.checked = lista.every(f => facturasSeleccionadas.includes(f.id));
-                checkTodos.indeterminate = facturasSeleccionadas.length > 0 && !checkTodos.checked;
-            }
-
-            // Info de filtro
-            const info = document.getElementById('facturasFiltroInfo');
-            if (info) {
-                const periodoLabels = { semana_actual: 'Semana Actual', semana_anterior: 'Semana Anterior',
-                                        mes_actual: 'Mes Actual', mes_anterior: 'Mes Anterior', personalizado: 'Personalizado' };
-                const etiquetas = [];
-                if (filtroPeriodo !== 'todos') {
-                    let lbl = periodoLabels[filtroPeriodo] || '';
-                    if (desde || hasta) lbl += (desde ? ' desde ' + desde : '') + (hasta ? ' hasta ' + hasta : '');
-                    etiquetas.push(lbl);
-                }
-                if (texto) etiquetas.push(`proveedor: "${texto}"`);
-                if (categoria) etiquetas.push(`categoría: "${categoria}"`);
-                info.textContent = etiquetas.length
-                    ? `Mostrando ${lista.length} de ${facturas.length} facturas — ${etiquetas.join(' · ')}`
-                    : `Total: ${lista.length} facturas`;
-            }
-        }
-
-        function toggleSortFecha() {
-            facturasSortDir = facturasSortDir === 'desc' ? 'asc' : 'desc';
-            const icon = document.getElementById('sortIcon');
-            const btn = document.getElementById('btnSortFecha');
-            const label = facturasSortDir === 'asc' ? '▲' : '▼';
-            if (icon) icon.textContent = label;
-            if (btn) btn.textContent = `📅 Fecha ${label}`;
-            renderTablaFacturas();
-        }
-
-        function limpiarFiltroFacturas() {
-            const inp = document.getElementById('filtroProveedor');
-            if (inp) inp.value = '';
-            const desdeInp = document.getElementById('filtroDesdeFacturas');
-            const hastaInp = document.getElementById('filtroHastaFacturas');
-            if (desdeInp) desdeInp.value = '';
-            if (hastaInp) hastaInp.value = '';
-            facturasSortDir = 'desc';
-            const icon = document.getElementById('sortIcon');
-            const btn = document.getElementById('btnSortFecha');
-            if (icon) icon.textContent = '▼';
-            if (btn) btn.textContent = '📅 Fecha ▼';
-            // Resetear período a "Todos"
-            filtroPeriodo = 'todos';
-            document.querySelectorAll('.btn-periodo').forEach(b => b.classList.remove('active'));
-            const todosBtn = document.getElementById('btn-periodo-todos');
-            if (todosBtn) todosBtn.classList.add('active');
-            const custom = document.getElementById('filtros-personalizados');
-            if (custom) custom.style.display = 'none';
-            renderTablaFacturas();
-        }
-
-        // ===== GESTIÓN DE CATEGORÍAS =====
-        let modalFacturaId = null;
-        let modalFacturaFolio = null;
-
-        function abrirModalCategoria(facturaId, folio) {
-            modalFacturaId = facturaId;
-            modalFacturaFolio = folio;
-
-            const factura = facturas.find(f => f.id === facturaId);
-            document.getElementById('modalFolio').textContent = folio;
-            if (factura && factura.categoria) {
-                document.getElementById('modalCategoria').value = factura.categoria;
-            } else {
-                document.getElementById('modalCategoria').value = '';
-            }
-
-            document.getElementById('modalAsignarCategoria').style.display = 'flex';
-        }
-
-        function cerrarModalCategoria() {
-            document.getElementById('modalAsignarCategoria').style.display = 'none';
-            modalFacturaId = null;
-            modalFacturaFolio = null;
-        }
-
-        async function guardarCategoria() {
-            const categoria = document.getElementById('modalCategoria').value;
-            if (!modalFacturaId) return;
-
-            try {
-                const res = await fetch(`${API}/facturas/${modalFacturaId}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ categoria: categoria || null })
-                });
-
-                const data = await res.json();
-                if (data.success) {
-                    // Actualizar factura local
-                    const factura = facturas.find(f => f.id === modalFacturaId);
-                    if (factura) {
-                        factura.categoria = categoria || null;
-                    }
-                    renderTablaFacturas();
-                    cerrarModalCategoria();
-                } else {
-                    alert('Error: ' + (data.error || 'Error desconocido'));
-                }
-            } catch (e) {
-                alert('Error al guardar categoría');
-                console.error(e);
-            }
-        }
-
-        // Cerrar modal al hacer click afuera
-        document.addEventListener('click', function(event) {
-            const modal = document.getElementById('modalAsignarCategoria');
-            if (modal && event.target === modal) {
-                cerrarModalCategoria();
-            }
-            const modalLote = document.getElementById('modalAsignarCategoriaLote');
-            if (modalLote && event.target === modalLote) {
-                cerrarModalCategoriaLote();
-            }
+    function setupEventListeners() {
+      // Navegación
+      document.querySelectorAll('.nav-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+          document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+          e.target.classList.add('active');
+          document.getElementById(e.target.dataset.section).classList.add('active');
         });
+      });
 
-        // ===== SELECCIÓN MÚLTIPLE Y LOTE =====
-        function actualizarSeleccion() {
-            facturasSeleccionadas = [];
-            document.querySelectorAll('.checkFactura:checked').forEach(check => {
-                facturasSeleccionadas.push(parseInt(check.dataset.id));
-            });
+      // Formularios
+      document.getElementById('invoice-form').addEventListener('submit', handleInvoiceSubmit);
+      document.getElementById('provider-form').addEventListener('submit', handleProviderSubmit);
+      document.getElementById('payment-form').addEventListener('submit', handlePaymentSubmit);
+      document.getElementById('check-form').addEventListener('submit', handleCheckSubmit);
+    }
 
-            // Actualizar contador
-            const conteo = document.getElementById('conteoSeleccionadas');
-            if (conteo) {
-                conteo.textContent = `${facturasSeleccionadas.length} seleccionada${facturasSeleccionadas.length !== 1 ? 's' : ''}`;
-            }
+    // Manejadores de formularios
+    async function handleInvoiceSubmit(e) {
+      e.preventDefault();
+      const form = e.target;
 
-            renderTablaFacturas();
-        }
-
-        function toggleCheckTodos() {
-            const checkTodos = document.getElementById('checkTodos');
-            const checkboxes = document.querySelectorAll('.checkFactura');
-
-            if (checkTodos.checked) {
-                checkboxes.forEach(cb => cb.checked = true);
-            } else {
-                checkboxes.forEach(cb => cb.checked = false);
-            }
-
-            actualizarSeleccion();
-        }
-
-        function seleccionarTodas() {
-            const checkboxes = document.querySelectorAll('.checkFactura');
-            checkboxes.forEach(cb => cb.checked = true);
-            actualizarSeleccion();
-        }
-
-        function deseleccionarTodas() {
-            const checkboxes = document.querySelectorAll('.checkFactura');
-            checkboxes.forEach(cb => cb.checked = false);
-            facturasSeleccionadas = [];
-            const conteo = document.getElementById('conteoSeleccionadas');
-            if (conteo) conteo.textContent = '0 seleccionadas';
-            const controles = document.getElementById('controlesMasivos');
-            if (controles) controles.style.display = 'none';
-            renderTablaFacturas();
-        }
-
-        function abrirModalCategoriaLote() {
-            if (facturasSeleccionadas.length === 0) {
-                alert('Debes seleccionar al menos una factura');
-                return;
-            }
-
-            const conteo = document.getElementById('modalConteoLote');
-            if (conteo) {
-                conteo.textContent = facturasSeleccionadas.length;
-            }
-
-            document.getElementById('modalAsignarCategoriaLote').style.display = 'flex';
-        }
-
-        function cerrarModalCategoriaLote() {
-            document.getElementById('modalAsignarCategoriaLote').style.display = 'none';
-        }
-
-        async function guardarCategoriaLote() {
-            const categoria = document.getElementById('modalCategoriaLote').value;
-
-            if (facturasSeleccionadas.length === 0) {
-                alert('No hay facturas seleccionadas');
-                return;
-            }
-
-            try {
-                // Enviar actualización para cada factura
-                const promesas = facturasSeleccionadas.map(facturaId =>
-                    fetch(`${API}/facturas/${facturaId}`, {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ categoria: categoria || null })
-                    })
-                );
-
-                const respuestas = await Promise.all(promesas);
-                const todos = await Promise.all(respuestas.map(r => r.json()));
-
-                if (todos.every(d => d.success)) {
-                    // Actualizar facturas locales
-                    facturasSeleccionadas.forEach(id => {
-                        const factura = facturas.find(f => f.id === id);
-                        if (factura) {
-                            factura.categoria = categoria || null;
-                        }
-                    });
-
-                    alert(`✅ Categoría asignada a ${facturasSeleccionadas.length} factura${facturasSeleccionadas.length !== 1 ? 's' : ''}`);
-                    facturasSeleccionadas = [];
-                    renderTablaFacturas();
-                    cerrarModalCategoriaLote();
-                } else {
-                    alert('Error al guardar algunas categorías');
-                }
-            } catch (e) {
-                alert('Error al guardar categorías');
-                console.error(e);
-            }
-        }
-
-        async function eliminarRegistro(facturaId, folio) {
-            const confirmacion = confirm(`⚠️ ¿Está seguro que desea eliminar el registro ${folio}?\n\nEsta acción no se puede deshacer.`);
-            if (!confirmacion) return;
-
-            try {
-                const res = await fetch(`${API}/facturas/${facturaId}`, {
-                    method: 'DELETE'
-                });
-
-                const data = await res.json();
-                if (data.success) {
-                    alert(`✅ Registro ${folio} eliminado correctamente`);
-                    // Remover de la lista local
-                    facturas = facturas.filter(f => f.id !== facturaId);
-                    // Remover de seleccionadas si estaba ahí
-                    facturasSeleccionadas = facturasSeleccionadas.filter(id => id !== facturaId);
-                    renderTablaFacturas();
-                } else {
-                    alert(`Error: ${data.message || 'No se pudo eliminar el registro'}`);
-                }
-            } catch (e) {
-                alert('Error al eliminar el registro');
-                console.error(e);
-            }
-        }
-
-        function handleDropExcel(e) {
-            e.preventDefault();
-            document.getElementById('excelFile').files = e.dataTransfer.files;
-            importarExcel({ target: { files: e.dataTransfer.files } });
-        }
-
-        function cambiarTipoDocCreacion() {
-            const tipo = document.getElementById('tipoDocCreacion').value;
-            const otroInput = document.getElementById('otroTipoDocCreacion');
-            otroInput.style.display = tipo === 'otro' ? 'block' : 'none';
-            if (tipo !== 'otro') otroInput.value = '';
-        }
-
-        function cambiarTipoDocImportar() {
-            const tipo = document.getElementById('tipoDocImportar').value;
-            const otroInput = document.getElementById('otroTipoDocImportar');
-            otroInput.style.display = tipo === 'otro' ? 'block' : 'none';
-            if (tipo !== 'otro') otroInput.value = '';
-        }
-
-        async function importarExcel(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            // Obtener tipo de documento
-            const tipo = document.getElementById('tipoDocImportar').value;
-            const otroTipo = document.getElementById('otroTipoDocImportar').value;
-
-            if (tipo === 'otro' && !otroTipo) {
-                alert('Por favor, especifica el nombre del tipo de documento');
-                return;
-            }
-
-            document.getElementById('excelMsg').innerHTML = '<div style="padding: 1rem; text-align: center;"><span class="spinner"></span>Procesando Excel...</div>';
-
-            const formData = new FormData();
-            formData.append('file', file);
-            formData.append('tipo_doc', tipo === 'otro' ? otroTipo : tipo);
-            formData.append('doc_category', tipo);
-
-            try {
-                const res = await fetch(`${API}/upload/excel`, {
-                    method: 'POST',
-                    body: formData
-                });
-                const data = await res.json();
-                if (data.success) {
-                    document.getElementById('excelMsg').innerHTML = `<div class="msg success">✅ ${data.message}</div>`;
-                    await cargarFacturas();
-
-                    // Auto-categorizar facturas nuevas basadas en RUT existente
-                    await autoCategorrizarPorRUT();
-
-                    // Resetear formulario
-                    document.getElementById('excelFile').value = '';
-                    document.getElementById('tipoDocImportar').value = 'factura';
-                    cambiarTipoDocImportar();
-                } else {
-                    document.getElementById('excelMsg').innerHTML = `<div class="msg error">❌ Error: ${data.error}</div>`;
-                }
-            } catch (error) {
-                document.getElementById('excelMsg').innerHTML = '<div class="msg error">❌ Error al procesar</div>';
-            }
-        }
-
-        async function autoCategorrizarPorRUT() {
-            try {
-                // Crear un mapa de RUT -> categoría de facturas existentes
-                const rutCategoriaMap = {};
-                for (const factura of facturas) {
-                    if (factura.rut && factura.categoria) {
-                        if (!rutCategoriaMap[factura.rut]) {
-                            rutCategoriaMap[factura.rut] = factura.categoria;
-                        }
-                    }
-                }
-
-                // Buscar facturas sin categoría y asignarles si su RUT existe
-                const actualizaciones = [];
-                for (const factura of facturas) {
-                    if (!factura.categoria && factura.rut && rutCategoriaMap[factura.rut]) {
-                        actualizaciones.push({
-                            id: factura.id,
-                            categoria: rutCategoriaMap[factura.rut]
-                        });
-                    }
-                }
-
-                // Guardar actualizaciones
-                if (actualizaciones.length > 0) {
-                    const promesas = actualizaciones.map(upd =>
-                        fetch(`${API}/facturas/${upd.id}`, {
-                            method: 'PUT',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ categoria: upd.categoria })
-                        })
-                    );
-
-                    await Promise.all(promesas);
-
-                    // Actualizar datos locales
-                    for (const upd of actualizaciones) {
-                        const factura = facturas.find(f => f.id === upd.id);
-                        if (factura) {
-                            factura.categoria = upd.categoria;
-                        }
-                    }
-
-                    // Mostrar información
-                    const msgEl = document.getElementById('excelMsg');
-                    if (msgEl && msgEl.querySelector('.msg.success')) {
-                        const originalMsg = msgEl.querySelector('.msg.success').textContent;
-                        msgEl.innerHTML = `<div class="msg success">✅ ${originalMsg}<br><small>+ ${actualizaciones.length} factura${actualizaciones.length !== 1 ? 's' : ''} auto-categorizadas por RUT existente</small></div>`;
-                    }
-
-                    renderTablaFacturas();
-                }
-            } catch (e) {
-                console.error('Error auto-categorizando:', e);
-            }
-        }
-
-        // ===== TABS - IMPORTAR EXCEL =====
-        function cambiarTabImportar(tab) {
-            // Cambiar botones activos
-            document.getElementById('tabImportacion').classList.toggle('active', tab === 'importacion');
-            document.getElementById('tabCreacion').classList.toggle('active', tab === 'creacion');
-
-            // Cambiar color de botones
-            document.getElementById('tabImportacion').style.borderBottomColor = tab === 'importacion' ? 'var(--primary)' : 'transparent';
-            document.getElementById('tabImportacion').style.color = tab === 'importacion' ? 'var(--primary)' : 'var(--gray)';
-
-            document.getElementById('tabCreacion').style.borderBottomColor = tab === 'creacion' ? 'var(--primary)' : 'transparent';
-            document.getElementById('tabCreacion').style.color = tab === 'creacion' ? 'var(--primary)' : 'var(--gray)';
-
-            // Mostrar/ocultar contenidos
-            document.getElementById('contenidoImportacion').style.display = tab === 'importacion' ? 'block' : 'none';
-            document.getElementById('contenidoCreacion').style.display = tab === 'creacion' ? 'block' : 'none';
-        }
-
-        // ===== CREACIÓN MANUAL DE DOCUMENTOS =====
-        let documentosACrear = [];
-
-        function agregarFilaManual() {
-            documentosACrear.push({
-                folio: '',
-                fecha: '',
-                proveedor: '',
-                monto: ''
-            });
-            actualizarTablaCreacion();
-        }
-
-        function actualizarTablaCreacion() {
-            const tbody = document.getElementById('tbodyCreacionManual');
-            tbody.innerHTML = documentosACrear.map((doc, idx) => `
-                <tr>
-                    <td><input type="text" value="${doc.folio}" placeholder="INV-001" style="width:100%; padding:0.4rem; border:1px solid var(--border); border-radius:4px;" onchange="documentosACrear[${idx}].folio=this.value"></td>
-                    <td><input type="date" value="${doc.fecha}" style="width:100%; padding:0.4rem; border:1px solid var(--border); border-radius:4px;" onchange="documentosACrear[${idx}].fecha=this.value"></td>
-                    <td><input type="text" value="${doc.proveedor}" placeholder="Nombre Proveedor" style="width:100%; padding:0.4rem; border:1px solid var(--border); border-radius:4px;" onchange="documentosACrear[${idx}].proveedor=this.value"></td>
-                    <td><input type="number" value="${doc.monto}" placeholder="1000000" style="width:100%; padding:0.4rem; border:1px solid var(--border); border-radius:4px;" onchange="documentosACrear[${idx}].monto=this.value"></td>
-                    <td><button onclick="documentosACrear.splice(${idx},1); actualizarTablaCreacion();" class="btn-danger" style="padding:0.4rem 0.8rem; font-size:0.85rem;">✕ Eliminar</button></td>
-                </tr>
-            `).join('');
-        }
-
-        function limpiarFormularioManual() {
-            documentosACrear = [];
-            actualizarTablaCreacion();
-            document.getElementById('tipoDocCreacion').value = 'factura';
-            document.getElementById('otroTipoDocCreacion').style.display = 'none';
-            document.getElementById('otroTipoDocCreacion').value = '';
-            document.getElementById('mensajeCreacion').innerHTML = '';
-        }
-
-        async function guardarDocumentosManual() {
-            // Validar que haya documentos
-            if (documentosACrear.length === 0) {
-                document.getElementById('mensajeCreacion').innerHTML = '<div class="msg error">❌ Debes agregar al menos un documento</div>';
-                return;
-            }
-
-            // Validar que todos los campos estén completos
-            for (let i = 0; i < documentosACrear.length; i++) {
-                const doc = documentosACrear[i];
-                if (!doc.folio || !doc.fecha || !doc.proveedor || !doc.monto) {
-                    document.getElementById('mensajeCreacion').innerHTML = `<div class="msg error">❌ Fila ${i+1}: Completa todos los campos</div>`;
-                    return;
-                }
-            }
-
-            // Obtener tipo de documento
-            const tipoDoc = document.getElementById('tipoDocCreacion').value;
-            const tipoDocCustom = document.getElementById('otroTipoDocCreacion').value;
-            const tipo_doc = tipoDoc === 'otro' ? tipoDocCustom : tipoDoc;
-
-            // Preparar datos
-            const datos = {
-                documentos: documentosACrear.map(doc => ({
-                    folio: doc.folio,
-                    fecha_factura: doc.fecha,
-                    nombre_proveedor: doc.proveedor,
-                    monto: parseFloat(doc.monto),
-                    tipo_doc: tipo_doc
-                }))
-            };
-
-            try {
-                document.getElementById('mensajeCreacion').innerHTML = '<div class="msg info">⏳ Guardando documentos...</div>';
-
-                const res = await fetch(`${API}/documentos/crear-manual`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(datos)
-                });
-
-                const data = await res.json();
-
-                if (data.success) {
-                    document.getElementById('mensajeCreacion').innerHTML = `<div class="msg success">✅ ${data.documentos_creados} documento${data.documentos_creados!==1?'s':''} creado${data.documentos_creados!==1?'s':''} correctamente</div>`;
-
-                    // Limpiar después de 2 segundos
-                    setTimeout(() => {
-                        limpiarFormularioManual();
-                        // Recargar facturas para mostrar los nuevos documentos
-                        cargarFacturas();
-                    }, 2000);
-                } else {
-                    document.getElementById('mensajeCreacion').innerHTML = `<div class="msg error">❌ Error: ${data.error}</div>`;
-                }
-            } catch (error) {
-                document.getElementById('mensajeCreacion').innerHTML = '<div class="msg error">❌ Error al guardar documentos</div>';
-                console.error(error);
-            }
-        }
-
-        // ===== INVENTARIO =====
-        const CAT_INFO = {
-            'Pescados y Mariscos': { icon:'🦞', cls:'cat-pescados' },
-            'Líquidos':            { icon:'🍷', cls:'cat-liquidos' },
-            'Congelados':          { icon:'❄️',  cls:'cat-congelados' },
-            'Frutas y Verduras':   { icon:'🥦', cls:'cat-frutas' },
-            'Aseo':                { icon:'🧹', cls:'cat-aseo' },
-            'Servicios':           { icon:'🔧', cls:'cat-servicios' },
-            'Abarrotes':           { icon:'🛒', cls:'cat-abarrotes' },
-            'Sin categoría':       { icon:'📦', cls:'cat-abarrotes' },
+      try {
+        const invoiceData = {
+          invoice_number: form.querySelector('#invoice-number').value,
+          date: form.querySelector('#invoice-date').value,
+          provider_id: form.querySelector('#invoice-provider').value,
+          category_id: form.querySelector('#invoice-category').value,
+          amount: parseFloat(form.querySelector('#invoice-amount').value),
+          due_date: form.querySelector('#invoice-due-date').value || null,
+          description: form.querySelector('#invoice-description').value,
+          status: 'pendiente'
         };
-        const CATEGORIAS = Object.keys(CAT_INFO);
 
-        function catClass(cat) { return (CAT_INFO[cat] || CAT_INFO['Sin categoría']).cls; }
-        function catIcon(cat)  { return (CAT_INFO[cat] || CAT_INFO['Sin categoría']).icon; }
+        const { data, error } = await supabase
+          .from('invoices')
+          .insert([invoiceData])
+          .select();
 
-        function actualizarInventario() {
-            const filtroCat  = document.getElementById('filtroCatInv')?.value || '';
-            const filtroNom  = (document.getElementById('filtroNombreInv')?.value || '').toLowerCase();
-            const filtrados  = productos.filter(p =>
-                (!filtroCat || (p.categoria || '') === filtroCat) &&
-                (!filtroNom || (p.nombre || '').toLowerCase().includes(filtroNom))
-            );
-            document.getElementById('inventarioCount').textContent = `${filtrados.length} producto${filtrados.length!==1?'s':''} ${filtroCat ? 'en '+filtroCat : 'en total'}`;
+        if (error) throw error;
 
-            if (!filtrados.length) {
-                document.getElementById('inventarioGrid').innerHTML = '<div style="text-align:center; padding:3rem; color:var(--gray);">📦 Sin productos</div>';
-                return;
-            }
+        form.reset();
+        await loadInitialData();
+        showAlert('Factura registrada correctamente', 'success');
+      } catch (error) {
+        console.error('Error:', error);
+        showAlert('Error al registrar factura: ' + error.message, 'error');
+      }
+    }
 
-            // Agrupar por categoría
-            const grupos = {};
-            for (const p of filtrados) {
-                const cat = p.categoria || 'Sin categoría';
-                if (!grupos[cat]) grupos[cat] = [];
-                grupos[cat].push(p);
-            }
+    async function handleProviderSubmit(e) {
+      e.preventDefault();
+      const form = e.target;
 
-            let html = '';
-            for (const [cat, items] of Object.entries(grupos)) {
-                html += `<div class="dash-section-title">${catIcon(cat)} ${cat} <span style="font-size:0.75rem; font-weight:400;">(${items.length})</span></div>`;
-                html += `<div class="product-grid" style="margin-bottom:1.5rem;">`;
-                html += items.map(p => `
-                    <div class="product-card" style="border-top-color:var(--primary); position:relative;">
-                        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:0.4rem;">
-                            <strong style="font-size:0.9rem; flex:1;">${p.nombre}</strong>
-                            <button onclick="eliminarProducto(${p.id})" style="background:none; border:none; cursor:pointer; color:#d1d5db; font-size:1rem; padding:0; margin-left:0.3rem;" title="Eliminar">✕</button>
-                        </div>
-                        <span class="cat-pill ${catClass(cat)}">${cat}</span>
-                        <div style="font-size:0.82rem; color:var(--gray); margin-top:0.5rem; display:flex; flex-direction:column; gap:0.2rem;">
-                            <span>📦 ${p.cantidad} ${p.unidad || 'uds'} · $${(p.valor||0).toLocaleString('es-CL')} c/u</span>
-                            ${p.proveedor ? `<span>🏭 ${p.proveedor}</span>` : ''}
-                            ${p.folio ? `<span style="color:#94a3b8;">Folio ${p.folio} ${p.fecha_factura ? '· '+p.fecha_factura : ''}</span>` : ''}
-                        </div>
-                    </div>
-                `).join('');
-                html += `</div>`;
-            }
-            document.getElementById('inventarioGrid').innerHTML = html;
+      try {
+        const providerData = {
+          name: form.querySelector('#provider-name').value,
+          rut: form.querySelector('#provider-rut').value || null,
+          contact_email: form.querySelector('#provider-email').value || null,
+          contact_phone: form.querySelector('#provider-phone').value || null,
+          address: form.querySelector('#provider-address').value || null
+        };
+
+        const { data, error } = await supabase
+          .from('providers')
+          .insert([providerData])
+          .select();
+
+        if (error) throw error;
+
+        form.reset();
+        await loadInitialData();
+        showAlert('Proveedor registrado correctamente', 'success');
+      } catch (error) {
+        console.error('Error:', error);
+        showAlert('Error al registrar proveedor: ' + error.message, 'error');
+      }
+    }
+
+    async function handlePaymentSubmit(e) {
+      e.preventDefault();
+      const form = e.target;
+
+      try {
+        const paymentData = {
+          invoice_id: form.querySelector('#payment-invoice').value,
+          amount: parseFloat(form.querySelector('#payment-amount').value),
+          payment_date: form.querySelector('#payment-date').value,
+          payment_method_id: form.querySelector('#payment-method').value,
+          reference: form.querySelector('#payment-reference').value || null,
+          notes: form.querySelector('#payment-notes').value || null
+        };
+
+        const { data, error } = await supabase
+          .from('payments')
+          .insert([paymentData])
+          .select();
+
+        if (error) throw error;
+
+        // Actualizar estado de la factura
+        const invoice = state.invoices.find(i => i.id === paymentData.invoice_id);
+        if (invoice) {
+          const totalPaid = state.payments
+            .filter(p => p.invoice_id === paymentData.invoice_id)
+            .reduce((sum, p) => sum + p.amount, 0) + paymentData.amount;
+
+          const newStatus = totalPaid >= invoice.amount ? 'pagado' : 'parcial';
+
+          await supabase
+            .from('invoices')
+            .update({ status: newStatus })
+            .eq('id', paymentData.invoice_id);
         }
 
-        async function eliminarProducto(id) {
-            if (!confirm('¿Eliminar este producto del inventario?')) return;
-            const res = await fetch(`${API}/productos/${id}`, { method: 'DELETE' });
-            const data = await res.json();
-            if (data.success) { await cargarProductos(); actualizarInventario(); }
-        }
-
-        // ===== PDF PARSING =====
-        let pdfDatosExtraidos = null;
-
-        function setupDropZone() {
-            const zone = document.getElementById('pdfDropZone');
-            if (!zone) return;
-            zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
-            zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
-            zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('dragover'); if (e.dataTransfer.files[0]) procesarPDF(e.dataTransfer.files[0]); });
-        }
-
-        async function procesarPDF(file) {
-            if (!file || file.type !== 'application/pdf') return alert('Selecciona un archivo PDF válido');
-            document.getElementById('pdfEstado').textContent = '⏳ Procesando PDF...';
-            document.getElementById('pdfPreview').style.display = 'none';
-            const form = new FormData();
-            form.append('pdf', file);
-            try {
-                const res = await fetch(`${API}/inventario/parsear-pdf`, { method: 'POST', body: form });
-                const data = await res.json();
-                if (!data.success) throw new Error(data.error);
-                pdfDatosExtraidos = data;
-                mostrarPreviewPDF(data);
-                document.getElementById('pdfEstado').textContent = `✅ ${data.items.length} ítem(s) detectados`;
-            } catch (e) {
-                document.getElementById('pdfEstado').textContent = '❌ Error: ' + e.message;
-            }
-        }
-
-        function mostrarPreviewPDF(data) {
-            document.getElementById('pdfInfoHeader').innerHTML = `
-                <strong>🏭 ${data.proveedor}</strong> &nbsp;·&nbsp; RUT: ${data.rut_proveedor || '—'} &nbsp;·&nbsp; Folio: <strong>${data.folio || '—'}</strong> &nbsp;·&nbsp; Fecha: ${data.fecha || '—'}
-            `;
-            const CATS = ['Pescados y Mariscos','Abarrotes','Líquidos','Frutas y Verduras','Congelados','Aseo','Servicios'];
-            const catOpts = CATS.map(c => `<option>${c}</option>`).join('');
-            const rows = data.items.map((item, i) => `
-                <tr class="preview-item-row">
-                    <td><input type="text" value="${item.nombre}" oninput="pdfDatosExtraidos.items[${i}].nombre=this.value" style="width:100%; border:1px solid #e5e7eb; border-radius:4px; padding:0.25rem 0.4rem; font-size:0.83rem;"></td>
-                    <td style="text-align:center;">${item.cantidad}</td>
-                    <td style="text-align:center;">${item.unidad}</td>
-                    <td style="text-align:right;">$${(item.valor_unitario||0).toLocaleString('es-CL')}</td>
-                    <td style="text-align:right;">$${(item.total||0).toLocaleString('es-CL')}</td>
-                    <td>
-                        <select class="cat-select" onchange="pdfDatosExtraidos.items[${i}].categoria=this.value">
-                            ${CATS.map(c => `<option ${c===item.categoria?'selected':''}>${c}</option>`).join('')}
-                        </select>
-                    </td>
-                </tr>
-            `).join('');
-            document.getElementById('pdfItemsBody').innerHTML = rows || '<tr><td colspan="6" style="text-align:center; color:var(--gray); padding:1rem;">No se detectaron ítems de producto</td></tr>';
-            document.getElementById('pdfPreview').style.display = 'block';
-        }
-
-        function cancelarPDF() {
-            pdfDatosExtraidos = null;
-            document.getElementById('pdfPreview').style.display = 'none';
-            document.getElementById('pdfEstado').textContent = '';
-            document.getElementById('pdfFileInput').value = '';
-        }
-
-        async function guardarItemsPDF() {
-            if (!pdfDatosExtraidos || !pdfDatosExtraidos.items.length) return alert('No hay ítems para guardar');
-            const items = pdfDatosExtraidos.items.map(it => ({
-                ...it,
-                folio: pdfDatosExtraidos.folio,
-                proveedor: pdfDatosExtraidos.proveedor,
-                rut_proveedor: pdfDatosExtraidos.rut_proveedor,
-                fecha_factura: pdfDatosExtraidos.fecha,
-            }));
-            const res = await fetch(`${API}/inventario/guardar-items`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ items }) });
-            const data = await res.json();
-            if (data.success) {
-                document.getElementById('pdfMsg').innerHTML = `<span style="color:#10b981; font-size:0.88rem;">✅ ${data.insertados} producto(s) guardados en inventario</span>`;
-                setTimeout(() => { cancelarPDF(); cargarProductos(); }, 1500);
-            } else {
-                document.getElementById('pdfMsg').innerHTML = `<span style="color:#ef4444;">❌ ${data.error}</span>`;
-            }
-        }
-
-        // ===== PAGOS: campos condicionales =====
-        function toggleChequeFields() {
-            const medio = document.getElementById('medioPago').value;
-            const sec = document.getElementById('chequeSection');
-            sec.style.display = medio === 'cheque' ? 'block' : 'none';
-            if (medio === 'cheque' && document.getElementById('chequesList').children.length === 0) {
-                agregarCheque();
-            }
-            actualizarTotalCheques();
-        }
-
-        let chequeIdx = 0;
-        function agregarCheque() {
-            chequeIdx++;
-            const i = chequeIdx;
-            const row = document.createElement('div');
-            row.className = 'cheque-row';
-            row.id = `chequeRow_${i}`;
-            row.innerHTML = `
-                <div><label>N° Cheque</label><input type="text" id="cn_${i}" placeholder="Ej: 00123456"></div>
-                <div><label>Fecha de Canje</label><input type="date" id="cf_${i}" oninput="actualizarTotalCheques()"></div>
-                <div><label>Monto Cheque ($)</label><input type="number" id="cm_${i}" placeholder="0" min="0" oninput="actualizarTotalCheques()"></div>
-                <div style="display:flex;align-items:flex-end;"><button type="button" class="btn-danger" onclick="eliminarCheque(${i})">✕</button></div>
-            `;
-            document.getElementById('chequesList').appendChild(row);
-            actualizarTotalCheques();
-        }
-
-        function eliminarCheque(i) {
-            const el = document.getElementById(`chequeRow_${i}`);
-            if (el) el.remove();
-            actualizarTotalCheques();
-        }
-
-        function obtenerCheques() {
-            const cheques = [];
-            document.querySelectorAll('#chequesList .cheque-row').forEach(row => {
-                const i = row.id.replace('chequeRow_', '');
-                const fecha = document.getElementById(`cf_${i}`)?.value || '';
-                const monto = parseInt(document.getElementById(`cm_${i}`)?.value || '0');
-                if (fecha || monto > 0) {
-                    cheques.push({
-                        numero_cheque: document.getElementById(`cn_${i}`)?.value || '',
-                        fecha_cheque: fecha,
-                        monto_cheque: monto
-                    });
-                }
-            });
-            return cheques;
-        }
-
-        function actualizarTotalCheques() {
-            const cheques = obtenerCheques();
-            const totalCheques = cheques.reduce((s, c) => s + (c.monto_cheque || 0), 0);
-            const totalSeleccionado = facturasSeleccionadas.reduce((s, id) => {
-                const f = facturas.find(x => x.id === id);
-                return s + (f ? f.monto || 0 : 0);
-            }, 0);
-            const totalEl = document.getElementById('totalCheques');
-            if (!totalEl) return;
-            const diff = totalSeleccionado - totalCheques;
-            let color = 'var(--gray)';
-            if (diff > 0) color = '#f97316'; // Naranja si falta
-            else if (diff < 0) color = '#10b981'; // Verde si sobra
-            else if (totalCheques > 0) color = '#2563eb'; // Azul si es exacto
-
-            totalEl.innerHTML = `<span style="color:${color}; font-weight:700;">Fact: $${totalSeleccionado.toLocaleString('es-CL')} | Cheques: $${totalCheques.toLocaleString('es-CL')} ${diff !== 0 ? (diff > 0 ? `Falta: $${diff.toLocaleString('es-CL')}` : `Sobra: $${Math.abs(diff).toLocaleString('es-CL')}`) : '✓'}</span>`;
-        }
-
-        function limpiarFormPago() {
-            facturasSeleccionadas = [];
-            document.querySelectorAll('[id^="chk_"]').forEach(chk => chk.checked = false);
-            document.getElementById('medioPago').value = 'transferencia';
-            document.getElementById('fechaPago').value = '';
-            document.getElementById('chequesList').innerHTML = '';
-            document.getElementById('chequeSection').style.display = 'none';
-            document.getElementById('pagoMsg').innerHTML = '';
-            document.getElementById('totalCheques').innerHTML = '';
-            document.getElementById('resumenSeleccion').innerHTML = '';
-            filtrarDocumentosPago();
-        }
-
-        async function guardarPago() {
-            if (!facturasSeleccionadas.length) { alert('Selecciona al menos una factura'); return; }
-            const medioPago = document.getElementById('medioPago').value;
-            const fechaPago = document.getElementById('fechaPago').value;
-            if (!fechaPago) { alert('Ingresa la fecha de pago'); return; }
-
-            const body = {
-                factura_ids: facturasSeleccionadas,
-                medio_pago: medioPago,
-                fecha_pago: fechaPago
-            };
-
-            if (medioPago === 'cheque') {
-                const cheques = obtenerCheques();
-                if (!cheques.length) { alert('Agrega al menos un cheque'); return; }
-                body.cheques = cheques;
-            }
-
-            try {
-                const res = await fetch(`${API}/pagos/grupo`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body)
-                });
-                const data = await res.json();
-                if (!data.success) { alert('Error: ' + data.error); return; }
-
-                document.getElementById('pagoMsg').innerHTML = '<div class="msg success">✅ Pago agrupado registrado correctamente (Grupo: ' + data.pago_grupo_id + ')</div>';
-                setTimeout(() => {
-                    cargarFacturas();
-                    cargarPagos();
-                    limpiarFormPago();
-                }, 1500);
-            } catch (error) {
-                console.error(error);
-                alert('Error guardando pago');
-            }
-        }
-
-        // ===== PAGOS: tabla con filtros =====
-        let _pagosDebounce = null;
-        function debouncedCargarPagos() {
-            clearTimeout(_pagosDebounce);
-            _pagosDebounce = setTimeout(cargarPagos, 350);
-        }
-
-        async function cargarPagos() {
-            const proveedor = (document.getElementById('filtroPagosProveedor')?.value || '').trim();
-            const medio  = document.getElementById('filtroMedio')?.value  || '';
-            const desde  = document.getElementById('filtroDesde')?.value  || '';
-            const hasta  = document.getElementById('filtroHasta')?.value  || '';
-
-            const infoEl = document.getElementById('pagosFilterInfo');
-
-            // Sin filtros → no mostrar resultados
-            if (!proveedor && !medio && !desde && !hasta) {
-                if (infoEl) infoEl.textContent = '';
-                mostrarPagos(null);
-                return;
-            }
-
-            const params = new URLSearchParams();
-            if (proveedor) params.append('proveedor', proveedor);
-            if (medio)     params.append('medio_pago', medio);
-            if (desde)     params.append('fecha_desde', desde);
-            if (hasta)     params.append('fecha_hasta', hasta);
-
-            try {
-                const res  = await fetch(`${API}/pagos?${params}`);
-                const data = await res.json();
-                const pagos = data.pagos || [];
-
-                // Info de resultados
-                if (infoEl) {
-                    const total = pagos.reduce((s, p) => s + (p.monto || 0), 0);
-                    const etiquetas = [];
-                    if (proveedor) etiquetas.push(`proveedor: "${proveedor}"`);
-                    if (medio)     etiquetas.push({ transferencia:'Transferencia', cheque:'Cheque', webpay:'WebPay' }[medio] || medio);
-                    if (desde)     etiquetas.push(`desde ${desde}`);
-                    if (hasta)     etiquetas.push(`hasta ${hasta}`);
-                    infoEl.textContent = pagos.length
-                        ? `${pagos.length} pago${pagos.length !== 1 ? 's' : ''} · $${total.toLocaleString('es-CL')} — ${etiquetas.join(' · ')}`
-                        : `Sin resultados — ${etiquetas.join(' · ')}`;
-                }
-
-                mostrarPagos(pagos);
-            } catch (e) { console.error(e); }
-        }
-
-        function mostrarPagos(pagos) {
-            const tbody = document.getElementById('pagosTable');
-            if (pagos === null) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--gray); padding:2.5rem;">🔍 Selecciona al menos un filtro para ver los pagos registrados</td></tr>';
-                return;
-            }
-            if (!pagos.length) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--gray); padding:2rem;">Sin pagos con los filtros aplicados</td></tr>';
-                return;
-            }
-            tbody.innerHTML = pagos.map(p => {
-                const medioLabel = p.medio_pago === 'cheque' ? '📄 Cheque' : p.medio_pago === 'transferencia' ? '🏦 Transferencia' : p.medio_pago === 'webpay' ? '💳 WebPay' : '❓ Otro';
-                let detalleCheques = '-';
-
-                // Detalle de cheques
-                if (p.medio_pago === 'cheque' && p.cheques && p.cheques.length) {
-                    const cantCheques = p.cheques.length;
-                    const totalMonto = p.cheques.reduce((sum, c) => sum + (c.monto_cheque || 0), 0);
-
-                    if (cantCheques === 1) {
-                        const c = p.cheques[0];
-                        detalleCheques = `<div style="font-size:0.85rem; line-height:1.5;">
-                            <div><b>N° ${c.numero_cheque || '-'}</b></div>
-                            <div style="color:var(--gray);">Canje: ${c.fecha_cheque || '-'}</div>
-                            <div style="color:var(--primary); font-weight:600;">$${(c.monto_cheque || 0).toLocaleString('es-CL')}</div>
-                        </div>`;
-                    } else {
-                        const detalleLineas = p.cheques.map(c =>
-                            `<div style="padding:0.25rem 0; border-bottom:1px solid #e5e7eb;">
-                                <b>N° ${c.numero_cheque || '-'}</b> — Canje: ${c.fecha_cheque || '-'} — $${(c.monto_cheque || 0).toLocaleString('es-CL')}
-                            </div>`
-                        ).join('');
-                        detalleCheques = `<div style="font-size:0.85rem;">
-                            <div style="font-weight:700; margin-bottom:0.4rem;"><b>${cantCheques} cheques</b></div>
-                            <div>${detalleLineas}</div>
-                            <div style="color:var(--primary); font-weight:600; margin-top:0.3rem;">Total: $${totalMonto.toLocaleString('es-CL')}</div>
-                        </div>`;
-                    }
-                }
-
-                return `<tr>
-                    <td><strong>${p.folio || '-'}</strong></td>
-                    <td style="font-size:0.9rem;">${p.fecha_pago || '-'}</td>
-                    <td>${p.proveedor || '-'}</td>
-                    <td>${medioLabel}</td>
-                    <td style="font-weight:700; color:var(--primary);">$${(p.monto || 0).toLocaleString('es-CL')}</td>
-                    <td>${detalleCheques}</td>
-                </tr>`;
-            }).join('');
-        }
-
-        function limpiarFiltros() {
-            const pp = document.getElementById('filtroPagosProveedor');
-            if (pp) pp.value = '';
-            document.getElementById('filtroMedio').value = '';
-            document.getElementById('filtroDesde').value = '';
-            document.getElementById('filtroHasta').value = '';
-            const infoEl = document.getElementById('pagosFilterInfo');
-            if (infoEl) infoEl.textContent = '';
-            cargarPagos();
-        }
-
-        // ===== PAGOS: resumen de pendientes =====
-        function mostrarPendientesPagos() {
-            const el = document.getElementById('pendientesStats');
-            if (!el) return;
-            const unpaid = facturas.filter(f => f.estado !== 'pagada');
-            const sumar  = arr => arr.reduce((s, f) => s + (f.monto || 0), 0);
-            const grupos = { vencida: [], por_vencer: [], pendiente: [] };
-            unpaid.forEach(f => { const e = calcularEstado(f); (grupos[e] || grupos.pendiente).push(f); });
-
-            if (!unpaid.length) {
-                el.innerHTML = '<span style="color:var(--success); font-weight:600;">✅ No hay facturas pendientes de pago</span>';
-                return;
-            }
-            const items = [
-                { key: 'vencida',    label: '🔴 Vencidas',   color: '#b91c1c', bg: '#fee2e2' },
-                { key: 'por_vencer', label: '🟠 Por Vencer', color: '#9a3412', bg: '#ffedd5' },
-                { key: 'pendiente',  label: '⏳ Pendientes', color: '#92400e', bg: '#fef3c7' },
-            ];
-            el.innerHTML = items.filter(i => grupos[i.key].length).map(i => `
-                <div style="padding:0.7rem 1.2rem; background:${i.bg}; border-radius:8px; border-left:3px solid ${i.color}; min-width:150px;">
-                    <div style="font-weight:700; color:${i.color}; font-size:0.85rem;">${i.label}</div>
-                    <div style="font-size:0.8rem; color:var(--gray); margin-top:0.15rem;">${grupos[i.key].length} factura${grupos[i.key].length > 1 ? 's' : ''}</div>
-                    <div style="font-size:1.1rem; font-weight:700; color:${i.color}; margin-top:0.1rem;">$${sumar(grupos[i.key]).toLocaleString('es-CL')}</div>
-                </div>`).join('') + `
-                <div style="padding:0.7rem 1.2rem; background:#f3f4f6; border-radius:8px; border-left:3px solid #9ca3af; min-width:150px;">
-                    <div style="font-weight:700; color:#6b7280; font-size:0.85rem;">📋 Total</div>
-                    <div style="font-size:0.8rem; color:var(--gray); margin-top:0.15rem;">${unpaid.length} facturas</div>
-                    <div style="font-size:1.1rem; font-weight:700; color:#374151; margin-top:0.1rem;">$${sumar(unpaid).toLocaleString('es-CL')}</div>
-                </div>`;
-        }
-
-        // ===== REPORTES FINANCIEROS =====
-        function renderReportes() {
-            const todas = facturas.map(f => ({ ...f, estadoCalc: calcularEstado(f) }));
-            const sumar = arr => arr.reduce((s, f) => s + (f.monto || 0), 0);
-            const grupos = {
-                pendiente:  todas.filter(f => f.estadoCalc === 'pendiente'),
-                por_vencer: todas.filter(f => f.estadoCalc === 'por_vencer'),
-                vencida:    todas.filter(f => f.estadoCalc === 'vencida'),
-                pagada:     todas.filter(f => f.estadoCalc === 'pagada'),
-            };
-            const montoTotal = sumar(todas);
-            const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-
-            // KPIs
-            set('rep-total-count',     todas.length);
-            set('rep-total-monto',     '$' + montoTotal.toLocaleString('es-CL'));
-            set('rep-pendiente-count', grupos.pendiente.length);
-            set('rep-pendiente-monto', '$' + sumar(grupos.pendiente).toLocaleString('es-CL'));
-            set('rep-porvencer-count', grupos.por_vencer.length);
-            set('rep-porvencer-monto', '$' + sumar(grupos.por_vencer).toLocaleString('es-CL'));
-            set('rep-vencida-count',   grupos.vencida.length);
-            set('rep-vencida-monto',   '$' + sumar(grupos.vencida).toLocaleString('es-CL'));
-            set('rep-pagada-count',    grupos.pagada.length);
-            set('rep-pagada-monto',    '$' + sumar(grupos.pagada).toLocaleString('es-CL'));
-
-            // Distribución por estado (barras)
-            const distEl = document.getElementById('rep-distribucion');
-            if (distEl) {
-                const barItems = [
-                    { key: 'pendiente',  label: 'Pendiente',  color: '#92400e' },
-                    { key: 'por_vencer', label: 'Por Vencer', color: '#f97316' },
-                    { key: 'vencida',    label: 'Vencida',    color: '#b91c1c' },
-                    { key: 'pagada',     label: 'Pagada',     color: '#10b981' },
-                ];
-                distEl.innerHTML = !todas.length
-                    ? '<p style="color:var(--gray); text-align:center;">Sin datos</p>'
-                    : barItems.map(item => {
-                        const cnt = grupos[item.key].length;
-                        const mnt = sumar(grupos[item.key]);
-                        const pct = todas.length > 0 ? Math.round((cnt / todas.length) * 100) : 0;
-                        return `<div style="margin-bottom:1.1rem;">
-                            <div style="display:flex; justify-content:space-between; font-size:0.82rem; margin-bottom:0.3rem;">
-                                <span style="font-weight:700; color:${item.color};">${item.label}</span>
-                                <span style="color:var(--gray);">${cnt} (${pct}%) · $${mnt.toLocaleString('es-CL')}</span>
-                            </div>
-                            <div class="reporte-bar"><div class="reporte-bar-fill" style="width:${pct}%; background:${item.color};"></div></div>
-                        </div>`;
-                    }).join('');
-            }
-
-            // Medios de pago
-            const mediosEl = document.getElementById('rep-medios');
-            if (mediosEl) {
-                if (!grupos.pagada.length) {
-                    mediosEl.innerHTML = '<p style="color:var(--gray); text-align:center; padding:1rem;">Sin pagos registrados</p>';
-                } else {
-                    const tf = grupos.pagada.filter(f => f.medio_pago === 'transferencia');
-                    const ch = grupos.pagada.filter(f => f.medio_pago === 'cheque');
-                    const wp = grupos.pagada.filter(f => f.medio_pago === 'webpay');
-                    const ot = grupos.pagada.filter(f => !['transferencia','cheque','webpay'].includes(f.medio_pago));
-                    const medios = [
-                        { label: '🏦 Transferencia', arr: tf, color: '#1e40af' },
-                        { label: '📄 Cheque',        arr: ch, color: '#9d174d' },
-                        ...(wp.length ? [{ label: '💳 WebPay', arr: wp, color: '#065f46' }] : []),
-                        ...(ot.length ? [{ label: '❓ Otro',   arr: ot, color: '#6b7280' }] : []),
-                    ];
-                    mediosEl.innerHTML = medios.map(m => `
-                        <div style="display:flex; justify-content:space-between; align-items:center; padding:0.8rem; background:#f9fafb; border-radius:6px; border-left:3px solid ${m.color}; margin-bottom:0.7rem;">
-                            <span style="font-weight:600; color:${m.color};">${m.label}</span>
-                            <span style="text-align:right;">
-                                <span style="font-size:0.8rem; color:var(--gray);">${m.arr.length} factura${m.arr.length !== 1 ? 's' : ''}</span><br>
-                                <strong>$${sumar(m.arr).toLocaleString('es-CL')}</strong>
-                            </span>
-                        </div>`).join('');
-                }
-            }
-
-            // Por proveedor
-            const provEl = document.getElementById('rep-proveedores');
-            if (provEl) {
-                const prov = {};
-                todas.forEach(f => {
-                    const k = f.proveedor || 'Sin nombre';
-                    if (!prov[k]) prov[k] = { nombre: k, rut: f.rut || '-', n: 0, total: 0, pend: 0, pag: 0 };
-                    prov[k].n++;
-                    prov[k].total += (f.monto || 0);
-                    if (f.estadoCalc !== 'pagada') prov[k].pend += (f.monto || 0);
-                    else                           prov[k].pag  += (f.monto || 0);
-                    if (f.rut && f.rut !== '-') prov[k].rut = f.rut;
-                });
-                proveedoresData = Object.values(prov).sort((a, b) => b.total - a.total);
-                provEl.innerHTML = proveedoresData.length
-                    ? proveedoresData.map(p => `<tr>
-                        <td><strong>${p.nombre}</strong></td>
-                        <td style="font-size:0.82rem; color:var(--gray);">${p.rut}</td>
-                        <td style="text-align:center;">${p.n}</td>
-                        <td>$${p.total.toLocaleString('es-CL')}</td>
-                        <td style="color:${p.pend > 0 ? '#b91c1c' : 'var(--gray)'};">$${p.pend.toLocaleString('es-CL')}</td>
-                        <td style="color:#10b981;">$${p.pag.toLocaleString('es-CL')}</td>
-                    </tr>`).join('')
-                    : '<tr><td colspan="6" style="text-align:center; color:var(--gray);">Sin datos</td></tr>';
-            }
-
-            // Cargar cheques emitidos
-            cargarCheques();
-        }
-
-        // ===== REPORTES: filtro, exportar y limpiar BD =====
-
-        function aplicarFiltrosReporte() {
-            const proveedor = (document.getElementById('rep-f-proveedor')?.value || '').toLowerCase().trim();
-            const estado    = document.getElementById('rep-f-estado')?.value  || '';
-            const desde     = document.getElementById('rep-f-desde')?.value   || '';
-            const hasta     = document.getElementById('rep-f-hasta')?.value   || '';
-
-            let lista = facturas.map(f => ({ ...f, estadoCalc: calcularEstado(f) }));
-
-            if (proveedor) lista = lista.filter(f => (f.proveedor || '').toLowerCase().includes(proveedor));
-            if (estado)    lista = lista.filter(f => f.estadoCalc === estado);
-            if (desde)     lista = lista.filter(f => (f.fecha || '') >= desde);
-            if (hasta)     lista = lista.filter(f => (f.fecha || '') <= hasta);
-
-            repDetalleData = lista;
-
-            // Información de resultados
-            const infoEl = document.getElementById('rep-filtro-info');
-            if (infoEl) {
-                const total = lista.reduce((s, f) => s + (f.monto || 0), 0);
-                infoEl.innerHTML = lista.length
-                    ? `<strong>${lista.length}</strong> factura${lista.length !== 1 ? 's' : ''} · Monto total: <strong>$${total.toLocaleString('es-CL')}</strong>`
-                    : '<span style="color:#b91c1c;">Sin resultados con los filtros aplicados</span>';
-            }
-
-            // Tabla detalle
-            const tbody = document.getElementById('rep-detalle-table');
-            if (!tbody) return;
-            tbody.innerHTML = !lista.length
-                ? '<tr><td colspan="8" style="text-align:center; color:var(--gray); padding:2rem;">Sin resultados</td></tr>'
-                : lista.map(f => {
-                    const est = f.estadoCalc;
-                    const medioLabel = f.medio_pago === 'transferencia' ? '🏦 Transf.' : f.medio_pago === 'cheque' ? '📄 Cheque' : f.medio_pago === 'webpay' ? '💳 WebPay' : (f.medio_pago || '-');
-
-                    // Si es cheque, buscar fecha de canje del cheque
-                    let fechaMuestra = f.fecha_pago || '-';
-                    if (f.medio_pago === 'cheque' && f.id) {
-                        const cheque = chequesData.find(c => c.factura_id === f.id);
-                        if (cheque) {
-                            fechaMuestra = cheque.fecha_cheque || '-';
-                        }
-                    }
-
-                    return `<tr>
-                        <td>${f.folio}</td>
-                        <td>${f.proveedor || '-'}</td>
-                        <td style="font-size:0.82rem; color:var(--gray);">${f.rut || '-'}</td>
-                        <td>${f.fecha || '-'}</td>
-                        <td>$${(f.monto || 0).toLocaleString('es-CL')}</td>
-                        <td><span class="state-badge ${est}">${labelEstado(est)}</span></td>
-                        <td style="font-size:0.85rem;">${medioLabel}</td>
-                        <td style="font-size:0.85rem;">${fechaMuestra}</td>
-                    </tr>`;
-                }).join('');
-        }
-
-        function limpiarFiltrosReporte() {
-            ['rep-f-proveedor','rep-f-estado','rep-f-desde','rep-f-hasta'].forEach(id => {
-                const el = document.getElementById(id); if (el) el.value = '';
-            });
-            repDetalleData = [];
-            const infoEl = document.getElementById('rep-filtro-info');
-            if (infoEl) infoEl.textContent = '';
-            const tbody = document.getElementById('rep-detalle-table');
-            if (tbody) tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:var(--gray); padding:2rem;">Aplica filtros para ver el detalle</td></tr>';
-        }
-
-        function exportarDetalleExcel() {
-            if (!repDetalleData.length) {
-                alert('No hay datos filtrados para exportar.\nAplica un filtro y presiona Buscar primero.');
-                return;
-            }
-            const wsData = [
-                ['Folio','Proveedor','RUT','Fecha Emisión','Monto','Estado','Medio de Pago','Fecha de Pago']
-            ].concat(repDetalleData.map(f => [
-                f.folio,
-                f.proveedor || '',
-                f.rut        || '',
-                f.fecha      || '',
-                f.monto      || 0,
-                labelEstado(calcularEstado(f)),
-                f.medio_pago || '',
-                f.fecha_pago || ''
-            ]));
-            const ws = XLSX.utils.aoa_to_sheet(wsData);
-            ws['!cols'] = [{wch:12},{wch:32},{wch:14},{wch:14},{wch:14},{wch:12},{wch:16},{wch:14}];
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, 'Facturas');
-            XLSX.writeFile(wb, `Reporte_Facturas_${new Date().toISOString().split('T')[0]}.xlsx`);
-        }
-
-        function exportarProveedoresExcel() {
-            if (!proveedoresData.length) {
-                alert('No hay datos de proveedores. Abre el módulo Reportes primero.');
-                return;
-            }
-            const wsData = [
-                ['Proveedor','RUT','N° Facturas','Monto Total','Pendiente / Vencido','Pagado']
-            ].concat(proveedoresData.map(p => [
-                p.nombre, p.rut, p.n, p.total, p.pend, p.pag
-            ]));
-            const ws = XLSX.utils.aoa_to_sheet(wsData);
-            ws['!cols'] = [{wch:32},{wch:14},{wch:12},{wch:16},{wch:20},{wch:16}];
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, 'Proveedores');
-            XLSX.writeFile(wb, `Resumen_Proveedores_${new Date().toISOString().split('T')[0]}.xlsx`);
-        }
-
-        async function limpiarBaseFacturas() {
-            const n = facturas.length;
-            if (!n) { alert('No hay facturas en la base de datos.'); return; }
-            if (!confirm(`⚠️ ATENCIÓN\n\n¿Eliminar TODAS las ${n} facturas de la base de datos?\n\nEsta acción NO se puede deshacer.`)) return;
-            if (!confirm(`⚠️ Segunda confirmación requerida\n\n¿Confirmas la eliminación permanente de ${n} facturas?`)) return;
-            try {
-                const res  = await fetch(`${API}/facturas/all`, { method: 'DELETE' });
-                const data = await res.json();
-                if (data.success) {
-                    facturas = [];
-                    mostrarFacturas();
-                    alert(`✅ Se eliminaron ${data.eliminadas} facturas correctamente.`);
-                } else {
-                    alert('Error: ' + (data.message || data.error));
-                }
-            } catch (e) {
-                alert('Error de conexión al servidor');
-            }
-        }
-
-        // ===== REPORTES: CHEQUES EMITIDOS =====
-        let chequesData = [];
-        let chequesResumenData = [];
-
-        async function cargarCheques() {
-            try {
-                const res = await fetch(`${API}/cheques/reporte/flujo`);
-                const data = await res.json();
-                if (data.success) {
-                    chequesData = data.cheques || [];
-                    mostrarCheques(chequesData);
-                    cargarResumenVencimientos();
-                } else {
-                    document.getElementById('rep-cheques-table').innerHTML = '<tr><td colspan="6" style="text-align:center; color:#b91c1c;">Error al cargar cheques</td></tr>';
-                }
-            } catch (e) {
-                console.error('Error cargando cheques:', e);
-                document.getElementById('rep-cheques-table').innerHTML = '<tr><td colspan="6" style="text-align:center; color:#b91c1c;">Error de conexión</td></tr>';
-            }
-        }
-
-        function mostrarCheques(cheques) {
-            const tbody = document.getElementById('rep-cheques-table');
-            const infoEl = document.getElementById('cheques-info');
-
-            if (!cheques.length) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--gray); padding:2rem;">No hay cheques registrados</td></tr>';
-                if (infoEl) infoEl.innerHTML = '';
-                return;
-            }
-
-            // Información de resultados
-            if (infoEl) {
-                const total = cheques.reduce((s, c) => s + (c.monto_cheque || 0), 0);
-                const pendientes = cheques.filter(c => c.estado === 'pendiente').length;
-                const porvencer = cheques.filter(c => c.estado === 'por_vencer').length;
-                const vencidos = cheques.filter(c => c.estado === 'vencida').length;
-                infoEl.innerHTML = `
-                    <strong>${cheques.length}</strong> cheque${cheques.length !== 1 ? 's' : ''} ·
-                    Monto total: <strong>$${total.toLocaleString('es-CL')}</strong> ·
-                    <span style="color:#92400e;">⏳ ${pendientes} pendiente${pendientes !== 1 ? 's' : ''}</span> ·
-                    <span style="color:#f97316;">🟠 ${porvencer} por vencer</span> ·
-                    <span style="color:#ef4444;">🔴 ${vencidos} vencido${vencidos !== 1 ? 's' : ''}</span>
-                `;
-            }
-
-            // Tabla detalle
-            tbody.innerHTML = cheques.map(c => {
-                const estado = c.estado;
-                const estatusBadge = {
-                    'pendiente': '<span class="state-badge pendiente">⏳ Pendiente</span>',
-                    'por_vencer': '<span class="state-badge por_vencer">🟠 Por Vencer</span>',
-                    'vencida': '<span class="state-badge vencida">🔴 Vencida</span>'
-                }[estado] || '<span class="state-badge pendiente">Pendiente</span>';
-
-                const diasTexto = c.dias < 0 ? `${Math.abs(c.dias)} días (vencido)` : `${c.dias} días`;
-
-                return `<tr>
-                    <td style="font-weight:600;">${c.numero_cheque || '-'}</td>
-                    <td>${c.proveedor || '-'}</td>
-                    <td style="text-align:right;">$${(c.monto_cheque || 0).toLocaleString('es-CL')}</td>
-                    <td>${c.fecha_cheque || '-'}</td>
-                    <td>${estatusBadge}</td>
-                    <td style="font-size:0.85rem; color:var(--gray); text-align:center;">${diasTexto}</td>
-                </tr>`;
-            }).join('');
-        }
-
-        function filtrarCheques() {
-            const estado = document.getElementById('cheques-f-estado')?.value || '';
-            const desde = document.getElementById('cheques-f-desde')?.value || '';
-            const hasta = document.getElementById('cheques-f-hasta')?.value || '';
-
-            let filtrados = [...chequesData];
-
-            if (estado) filtrados = filtrados.filter(c => c.estado === estado);
-            if (desde) filtrados = filtrados.filter(c => (c.fecha_cheque || '') >= desde);
-            if (hasta) filtrados = filtrados.filter(c => (c.fecha_cheque || '') <= hasta);
-
-            mostrarCheques(filtrados);
-        }
-
-        function limpiarFiltrosCheques() {
-            ['cheques-f-estado', 'cheques-f-desde', 'cheques-f-hasta'].forEach(id => {
-                const el = document.getElementById(id);
-                if (el) el.value = '';
-            });
-            mostrarCheques(chequesData);
-        }
-
-        function cargarResumenVencimientos() {
-            // Agrupar cheques por fecha de vencimiento
-            const grupos = {};
-
-            for (const c of chequesData) {
-                const fecha = c.fecha_cheque || 'sin-fecha';
-                if (!grupos[fecha]) {
-                    grupos[fecha] = {
-                        fecha: fecha,
-                        cantidad: 0,
-                        monto: 0,
-                        cheques: [],
-                        estado: 'pendiente',
-                        dias: 0
-                    };
-                }
-                grupos[fecha].cantidad++;
-                grupos[fecha].monto += c.monto_cheque || 0;
-                grupos[fecha].cheques.push(c);
-
-                // Estado y días
-                if (c.dias < grupos[fecha].dias) {
-                    grupos[fecha].dias = c.dias;
-                }
-                if (c.estado === 'vencida') grupos[fecha].estado = 'vencida';
-                else if (c.estado === 'por_vencer' && grupos[fecha].estado !== 'vencida') grupos[fecha].estado = 'por_vencer';
-            }
-
-            // Convertir a array y ordenar
-            chequesResumenData = Object.values(grupos).sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
-
-            mostrarResumenVencimientos();
-            mostrarKPIsVencimientos();
-        }
-
-        function mostrarResumenVencimientos() {
-            const tbody = document.getElementById('rep-resumen-vencimientos');
-
-            if (!chequesResumenData.length) {
-                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:var(--gray); padding:2rem;">No hay cheques para mostrar resumen</td></tr>';
-                return;
-            }
-
-            const hoy = new Date();
-            tbody.innerHTML = chequesResumenData.map(grupo => {
-                const fecha = grupo.fecha;
-                let diasRestantes = 0;
-                let estado = grupo.estado;
-
-                if (fecha && fecha !== 'sin-fecha') {
-                    const fechaCheque = new Date(fecha + 'T00:00:00');
-                    diasRestantes = Math.floor((fechaCheque - hoy) / (1000 * 60 * 60 * 24));
-                }
-
-                const estatusBadge = {
-                    'pendiente': '<span class="state-badge pendiente">⏳ Pendiente</span>',
-                    'por_vencer': '<span class="state-badge por_vencer">🟠 Por Vencer</span>',
-                    'vencida': '<span class="state-badge vencida">🔴 Vencida</span>'
-                }[estado] || '<span class="state-badge pendiente">Pendiente</span>';
-
-                const diasTexto = diasRestantes < 0
-                    ? `<span style="color:#ef4444;">${Math.abs(diasRestantes)} días (vencido)</span>`
-                    : `<span style="color:#92400e;">${diasRestantes} días</span>`;
-
-                return `<tr>
-                    <td style="font-weight:600;">${fecha !== 'sin-fecha' ? fecha : 'Sin fecha'}</td>
-                    <td style="text-align:center;"><strong>${grupo.cantidad}</strong></td>
-                    <td style="text-align:right;">$${grupo.monto.toLocaleString('es-CL')}</td>
-                    <td>${estatusBadge}</td>
-                    <td style="text-align:center;">${diasTexto}</td>
-                </tr>`;
-            }).join('');
-        }
-
-        function mostrarKPIsVencimientos() {
-            const container = document.getElementById('cheques-resumen-kpi');
-            if (!container) return;
-
-            // Calcular totales
-            const hoy = new Date();
-            const proxSemana = new Date(hoy.getTime() + 7 * 24 * 60 * 60 * 1000);
-            const proxMes = new Date(hoy.getTime() + 30 * 24 * 60 * 60 * 1000);
-
-            let proximaSemana = 0;
-            let proximoMes = 0;
-            let vencidos = 0;
-
-            for (const grupo of chequesResumenData) {
-                const fecha = grupo.fecha;
-                if (fecha && fecha !== 'sin-fecha') {
-                    const fechaCheque = new Date(fecha + 'T00:00:00');
-                    if (fechaCheque <= hoy) {
-                        vencidos += grupo.monto;
-                    } else if (fechaCheque <= proxSemana) {
-                        proximaSemana += grupo.monto;
-                    } else if (fechaCheque <= proxMes) {
-                        proximoMes += grupo.monto;
-                    }
-                }
-            }
-
-            const totalMonto = chequesResumenData.reduce((s, g) => s + g.monto, 0);
-
-            container.innerHTML = `
-                <div class="kpi-card" style="border-left-color:#ef4444;">
-                    <div class="kpi-label">Vencidos</div>
-                    <div class="kpi-value" style="font-size:1.2rem; color:#ef4444;">$${vencidos.toLocaleString('es-CL')}</div>
-                    <div style="font-size:0.75rem; color:#991b1b; margin-top:0.3rem;">⚠️ Requiere acción</div>
-                </div>
-                <div class="kpi-card" style="border-left-color:#f97316;">
-                    <div class="kpi-label">Próximos 7 días</div>
-                    <div class="kpi-value" style="font-size:1.2rem; color:#f97316;">$${proximaSemana.toLocaleString('es-CL')}</div>
-                    <div style="font-size:0.75rem; color:var(--gray); margin-top:0.3rem;">Flujo urgente</div>
-                </div>
-                <div class="kpi-card" style="border-left-color:#fbbf24;">
-                    <div class="kpi-label">Próximos 30 días</div>
-                    <div class="kpi-value" style="font-size:1.2rem; color:#fbbf24;">$${proximoMes.toLocaleString('es-CL')}</div>
-                    <div style="font-size:0.75rem; color:var(--gray); margin-top:0.3rem;">Planificación</div>
-                </div>
-                <div class="kpi-card" style="border-left-color:var(--primary);">
-                    <div class="kpi-label">Total Cheques</div>
-                    <div class="kpi-value" style="font-size:1.2rem;">$${totalMonto.toLocaleString('es-CL')}</div>
-                    <div style="font-size:0.75rem; color:var(--gray); margin-top:0.3rem;">Flujo total</div>
-                </div>
-            `;
-        }
-
-        function exportarChequesExcel() {
-            const tbody = document.getElementById('rep-cheques-table');
-            const filas = tbody.querySelectorAll('tr');
-
-            if (filas.length === 1 && filas[0].textContent.includes('No hay')) {
-                alert('No hay cheques para exportar.');
-                return;
-            }
-
-            const wsData = [
-                ['N° Cheque', 'Proveedor', 'Monto', 'Fecha Vencimiento', 'Estado', 'Días']
-            ];
-
-            for (const c of chequesData) {
-                wsData.push([
-                    c.numero_cheque || '',
-                    c.proveedor || '',
-                    c.monto_cheque || 0,
-                    c.fecha_cheque || '',
-                    c.estado || '',
-                    c.dias || 0
-                ]);
-            }
-
-            const ws = XLSX.utils.aoa_to_sheet(wsData);
-            ws['!cols'] = [{wch:16},{wch:32},{wch:16},{wch:18},{wch:14},{wch:12}];
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, 'Cheques');
-            XLSX.writeFile(wb, `Reporte_Cheques_${new Date().toISOString().split('T')[0]}.xlsx`);
-        }
-
-        function exportarResumenVencimientosExcel() {
-            if (!chequesResumenData.length) {
-                alert('No hay datos de vencimientos para exportar.');
-                return;
-            }
-
-            const wsData = [
-                ['Fecha Vencimiento', 'Cantidad Cheques', 'Monto Total', 'Estado', 'Días Restantes']
-            ];
-
-            const hoy = new Date();
-            for (const grupo of chequesResumenData) {
-                const fecha = grupo.fecha;
-                let diasRestantes = 0;
-                if (fecha && fecha !== 'sin-fecha') {
-                    const fechaCheque = new Date(fecha + 'T00:00:00');
-                    diasRestantes = Math.floor((fechaCheque - hoy) / (1000 * 60 * 60 * 24));
-                }
-
-                wsData.push([
-                    fecha !== 'sin-fecha' ? fecha : 'Sin fecha',
-                    grupo.cantidad,
-                    grupo.monto,
-                    grupo.estado,
-                    diasRestantes
-                ]);
-            }
-
-            const ws = XLSX.utils.aoa_to_sheet(wsData);
-            ws['!cols'] = [{wch:18},{wch:18},{wch:16},{wch:14},{wch:16}];
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, 'Resumen Vencimientos');
-            XLSX.writeFile(wb, `Resumen_Vencimientos_${new Date().toISOString().split('T')[0]}.xlsx`);
-        }
-
-        // ===== CONFIGURACIÓN: usuarios =====
-        async function cargarUsuarios() {
-            try {
-                const res = await fetch(`${API}/usuarios`);
-                const data = await res.json();
-                mostrarUsuarios(data.usuarios || []);
-            } catch (e) { console.error(e); }
-        }
-
-        function mostrarUsuarios(usuarios) {
-            const tbody = document.getElementById('usuariosTable');
-            if (!usuarios.length) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--gray); padding:2rem;">Sin usuarios</td></tr>';
-                return;
-            }
-            tbody.innerHTML = usuarios.map(u => {
-                const esTuCuenta = currentUser && currentUser.id === u.id;
-                const rolBadge = u.rol === 'admin'
-                    ? '<span class="state-badge pagada">👑 Admin</span>'
-                    : '<span class="state-badge pendiente">👤 Usuario</span>';
-                const estadoHtml = u.activo
-                    ? '<span style="color:var(--success); font-weight:600;">✅ Activo</span>'
-                    : '<span style="color:var(--gray);">⛔ Inactivo</span>';
-                const fecha = u.created_at
-                    ? new Date(u.created_at).toLocaleDateString('es-CL')
-                    : '-';
-                const acciones = esTuCuenta
-                    ? '<span style="color:var(--gray); font-size:0.8rem; font-style:italic;">Tu cuenta</span>'
-                    : `<button class="btn-danger" onclick="eliminarUsuario(${u.id}, '${u.nombre.replace(/'/g,"\\'")}')">🗑️ Eliminar</button>`;
-                return `<tr>
-                    <td><strong>${u.nombre}</strong></td>
-                    <td>${u.email}</td>
-                    <td>${rolBadge}</td>
-                    <td>${estadoHtml}</td>
-                    <td style="font-size:0.8rem; color:var(--gray);">${fecha}</td>
-                    <td>${acciones}</td>
-                </tr>`;
-            }).join('');
-        }
-
-        async function crearUsuario() {
-            const nombre   = document.getElementById('nuevoNombre').value.trim();
-            const email    = document.getElementById('nuevoEmail').value.trim();
-            const password = document.getElementById('nuevoPassword').value;
-            const rol      = document.getElementById('nuevoRol').value;
-            const msgEl    = document.getElementById('usuarioMsg');
-
-            if (!nombre || !email || !password) {
-                msgEl.innerHTML = '<div class="msg error">❌ Nombre, email y contraseña son requeridos</div>';
-                return;
-            }
-            try {
-                const res = await fetch(`${API}/usuarios`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ nombre, email, password, rol })
-                });
-                const data = await res.json();
-                if (data.success) {
-                    msgEl.innerHTML = '<div class="msg success">✅ Usuario creado correctamente</div>';
-                    document.getElementById('nuevoNombre').value = '';
-                    document.getElementById('nuevoEmail').value = '';
-                    document.getElementById('nuevoPassword').value = '';
-                    document.getElementById('nuevoRol').value = 'usuario';
-                    cargarUsuarios();
-                    setTimeout(() => msgEl.innerHTML = '', 3000);
-                } else {
-                    msgEl.innerHTML = `<div class="msg error">❌ ${data.message || data.error}</div>`;
-                }
-            } catch (e) {
-                msgEl.innerHTML = '<div class="msg error">❌ Error de conexión</div>';
-            }
-        }
-
-        async function eliminarUsuario(id, nombre) {
-            if (!confirm(`¿Eliminar al usuario "${nombre}"?\nEsta acción no se puede deshacer.`)) return;
-            try {
-                const res = await fetch(`${API}/usuarios/${id}`, { method: 'DELETE' });
-                const data = await res.json();
-                if (data.success) {
-                    cargarUsuarios();
-                } else {
-                    alert('No se pudo eliminar: ' + (data.message || data.error));
-                }
-            } catch (e) {
-                alert('Error de conexión');
-            }
-        }
-
-        window.addEventListener('load', () => {
-            const t = localStorage.getItem('token');
-            const u = localStorage.getItem('currentUser');
-            if (t) {
-                token = t;
-                if (u) {
-                    try {
-                        currentUser = JSON.parse(u);
-                        if (currentUser && currentUser.rol === 'admin') {
-                            document.getElementById('navConfiguracion').style.display = 'block';
-                        }
-                    } catch(e) {}
-                }
-                document.getElementById('authOverlay').classList.add('hidden');
-                document.getElementById('appContainer').style.display = 'flex';
-                cargarDatos();
-            }
-        });
-    </script>
-
-    <!-- MODAL ASIGNAR CATEGORÍA A FACTURA -->
-    <div id="modalAsignarCategoria" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; justify-content:center; align-items:center;">
-        <div style="background:white; padding:2rem; border-radius:12px; box-shadow:0 20px 60px rgba(0,0,0,0.3); max-width:500px; width:90%;">
-            <h3 style="margin-bottom:1rem; color:var(--primary);">📋 Asignar Categoría</h3>
-
-            <div style="margin-bottom:1rem; padding:0.8rem; background:#f9fafb; border-radius:6px;">
-                <strong style="display:block; margin-bottom:0.3rem; font-size:0.9rem;">Folio:</strong>
-                <span id="modalFolio" style="color:var(--gray); font-size:0.95rem;">-</span>
-            </div>
-
-            <div style="margin-bottom:1.5rem;">
-                <label style="display:block; font-weight:700; margin-bottom:0.5rem; font-size:0.9rem;">Selecciona una categoría:</label>
-                <select id="modalCategoria" style="width:100%; padding:0.8rem; border:1px solid var(--border); border-radius:6px; font-size:0.95rem;">
-                    <option value="">— Sin categoría —</option>
-                    <option value="Abarrotes">🛒 Abarrotes</option>
-                    <option value="Aseo & Limpieza">🧹 Aseo & Limpieza</option>
-                    <option value="Autopistas">🛣️ Autopistas</option>
-                    <option value="Congelados">❄️ Congelados</option>
-                    <option value="Envases">📦 Envases</option>
-                    <option value="Ferretería">🔨 Ferretería</option>
-                    <option value="Frutas & Verduras">🥕 Frutas & Verduras</option>
-                    <option value="Carnes">🥩 Carnes</option>
-                    <option value="Pescados y Mariscos">🦞 Pescados y Mariscos</option>
-                    <option value="Comercio">🏬 Comercio</option>
-                    <option value="Líquidos">🍷 Líquidos</option>
-                    <option value="Servicios">🔧 Servicios</option>
-                </select>
-            </div>
-
-            <div style="display:flex; gap:0.8rem; justify-content:flex-end;">
-                <button onclick="cerrarModalCategoria()" style="padding:0.8rem 1.5rem; border:1px solid var(--border); border-radius:6px; background:white; cursor:pointer; font-weight:600;">Cancelar</button>
-                <button onclick="guardarCategoria()" style="padding:0.8rem 1.5rem; background:var(--primary); color:white; border:none; border-radius:6px; cursor:pointer; font-weight:600;">Guardar</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- MODAL ASIGNAR CATEGORÍA A LOTE -->
-    <div id="modalAsignarCategoriaLote" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; justify-content:center; align-items:center;">
-        <div style="background:white; padding:2rem; border-radius:12px; box-shadow:0 20px 60px rgba(0,0,0,0.3); max-width:500px; width:90%;">
-            <h3 style="margin-bottom:1rem; color:var(--primary);">🏷️ Asignar Categoría a Lote</h3>
-
-            <div style="margin-bottom:1.5rem; padding:1rem; background:#e3f2fd; border-radius:6px; border-left:4px solid var(--primary);">
-                <strong style="display:block; margin-bottom:0.5rem; font-size:0.95rem;">Facturas seleccionadas:</strong>
-                <span id="modalConteoLote" style="color:var(--primary); font-size:1.2rem; font-weight:700;">0</span>
-            </div>
-
-            <div style="margin-bottom:1.5rem;">
-                <label style="display:block; font-weight:700; margin-bottom:0.5rem; font-size:0.9rem;">Selecciona una categoría:</label>
-                <select id="modalCategoriaLote" style="width:100%; padding:0.8rem; border:1px solid var(--border); border-radius:6px; font-size:0.95rem;">
-                    <option value="">— Sin categoría —</option>
-                    <option value="Abarrotes">🛒 Abarrotes</option>
-                    <option value="Aseo & Limpieza">🧹 Aseo & Limpieza</option>
-                    <option value="Autopistas">🛣️ Autopistas</option>
-                    <option value="Congelados">❄️ Congelados</option>
-                    <option value="Envases">📦 Envases</option>
-                    <option value="Ferretería">🔨 Ferretería</option>
-                    <option value="Frutas & Verduras">🥕 Frutas & Verduras</option>
-                    <option value="Carnes">🥩 Carnes</option>
-                    <option value="Pescados y Mariscos">🦞 Pescados y Mariscos</option>
-                    <option value="Comercio">🏬 Comercio</option>
-                    <option value="Líquidos">🍷 Líquidos</option>
-                    <option value="Servicios">🔧 Servicios</option>
-                </select>
-            </div>
-
-            <div style="display:flex; gap:0.8rem; justify-content:flex-end;">
-                <button onclick="cerrarModalCategoriaLote()" style="padding:0.8rem 1.5rem; border:1px solid var(--border); border-radius:6px; background:white; cursor:pointer; font-weight:600;">Cancelar</button>
-                <button onclick="guardarCategoriaLote()" style="padding:0.8rem 1.5rem; background:var(--success); color:white; border:none; border-radius:6px; cursor:pointer; font-weight:600;">✓ Guardar a Todos</button>
-            </div>
-        </div>
-    </div>
+        form.reset();
+        await loadInitialData();
+        showAlert('Pago registrado correctamente', 'success');
+      } catch (error) {
+        console.error('Error:', error);
+        showAlert('Error al registrar pago: ' + error.message, 'error');
+      }
+    }
+
+    async function handleCheckSubmit(e) {
+      e.preventDefault();
+      const form = e.target;
+
+      try {
+        const checkData = {
+          check_number: form.querySelector('#check-number').value,
+          amount: parseFloat(form.querySelector('#check-amount').value),
+          bank: form.querySelector('#check-bank').value || null,
+          issuer: form.querySelector('#check-issuer').value || null,
+          issue_date: form.querySelector('#check-issue-date').value,
+          due_date: form.querySelector('#check-due-date').value,
+          status: 'pendiente'
+        };
+
+        const { data, error } = await supabase
+          .from('checks')
+          .insert([checkData])
+          .select();
+
+        if (error) throw error;
+
+        form.reset();
+        await loadInitialData();
+        showAlert('Cheque registrado correctamente', 'success');
+      } catch (error) {
+        console.error('Error:', error);
+        showAlert('Error al registrar cheque: ' + error.message, 'error');
+      }
+    }
+
+    // Renderizar tablas
+    function renderTables() {
+      // Facturas
+      const invoicesHtml = `
+        <table>
+          <thead>
+            <tr>
+              <th>Número</th>
+              <th>Proveedor</th>
+              <th>Categoría</th>
+              <th>Monto</th>
+              <th>Fecha</th>
+              <th>Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${state.invoices.map(inv => `
+              <tr>
+                <td>${inv.invoice_number}</td>
+                <td>${inv.providers?.name || '-'}</td>
+                <td>${inv.categories?.name || '-'}</td>
+                <td>$${inv.amount.toLocaleString('es-CL')}</td>
+                <td>${new Date(inv.date).toLocaleDateString('es-CL')}</td>
+                <td><span class="status ${inv.status}">${inv.status}</span></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+      document.getElementById('invoices-list').innerHTML = invoicesHtml;
+
+      // Proveedores
+      const providersHtml = `
+        <table>
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>RUT</th>
+              <th>Email</th>
+              <th>Teléfono</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${state.providers.map(prov => `
+              <tr>
+                <td>${prov.name}</td>
+                <td>${prov.rut || '-'}</td>
+                <td>${prov.contact_email || '-'}</td>
+                <td>${prov.contact_phone || '-'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+      document.getElementById('providers-list').innerHTML = providersHtml;
+
+      // Pagos
+      const paymentsHtml = `
+        <table>
+          <thead>
+            <tr>
+              <th>Factura</th>
+              <th>Monto</th>
+              <th>Medio de Pago</th>
+              <th>Fecha</th>
+              <th>Referencia</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${state.payments.map(pay => `
+              <tr>
+                <td>${pay.invoices?.invoice_number || '-'}</td>
+                <td>$${pay.amount.toLocaleString('es-CL')}</td>
+                <td>${pay.payment_methods?.name || '-'}</td>
+                <td>${new Date(pay.payment_date).toLocaleDateString('es-CL')}</td>
+                <td>${pay.reference || '-'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+      document.getElementById('payments-list').innerHTML = paymentsHtml;
+
+      // Cheques
+      const checksHtml = `
+        <table>
+          <thead>
+            <tr>
+              <th>Número</th>
+              <th>Monto</th>
+              <th>Banco</th>
+              <th>Vencimiento</th>
+              <th>Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${state.checks.map(chk => `
+              <tr>
+                <td>${chk.check_number}</td>
+                <td>$${chk.amount.toLocaleString('es-CL')}</td>
+                <td>${chk.bank || '-'}</td>
+                <td>${new Date(chk.due_date).toLocaleDateString('es-CL')}</td>
+                <td><span class="status ${chk.status}">${chk.status}</span></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+      document.getElementById('checks-list').innerHTML = checksHtml;
+    }
+
+    // Dashboard
+    async function loadDashboard() {
+      const pendingInvoices = state.invoices.filter(i => i.status !== 'pagado');
+      const totalAmount = pendingInvoices.reduce((sum, i) => sum + i.amount, 0);
+      const pendingChecks = state.checks.filter(c => c.status === 'pendiente').length;
+
+      document.getElementById('total-pending').textContent = pendingInvoices.length;
+      document.getElementById('total-amount').textContent = `$${totalAmount.toLocaleString('es-CL')}`;
+      document.getElementById('pending-checks').textContent = pendingChecks;
+      document.getElementById('active-providers').textContent = state.providers.length;
+
+      // Facturas recientes
+      const recentHtml = `
+        <h3 style="color: #667eea; margin-top: 20px;">Facturas Recientes</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Número</th>
+              <th>Proveedor</th>
+              <th>Monto</th>
+              <th>Fecha</th>
+              <th>Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${state.invoices.slice(0, 5).map(inv => `
+              <tr>
+                <td>${inv.invoice_number}</td>
+                <td>${inv.providers?.name || '-'}</td>
+                <td>$${inv.amount.toLocaleString('es-CL')}</td>
+                <td>${new Date(inv.date).toLocaleDateString('es-CL')}</td>
+                <td><span class="status ${inv.status}">${inv.status}</span></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+      document.getElementById('recent-invoices').innerHTML = recentHtml;
+    }
+
+    // Utilidades
+    function showAlert(message, type = 'info') {
+      const alertDiv = document.createElement('div');
+      alertDiv.className = `alert ${type}`;
+      alertDiv.textContent = message;
+
+      const container = document.getElementById('alert-container');
+      container.appendChild(alertDiv);
+
+      setTimeout(() => alertDiv.remove(), 4000);
+    }
+  </script>
 </body>
 </html>
