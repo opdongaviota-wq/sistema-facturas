@@ -378,25 +378,6 @@
   </style>
 </head>
 <body>
-  <!-- LOGIN OVERLAY -->
-  <div id="login-overlay" class="login-overlay">
-    <div class="login-card">
-      <h1>🔐 Acceso</h1>
-      <form id="login-form" onsubmit="handleLogin(event)">
-        <div class="form-group">
-          <label>Email</label>
-          <input type="email" id="login-email" placeholder="usuario1@empresa.com" required>
-        </div>
-        <div class="form-group">
-          <label>Contraseña</label>
-          <input type="password" id="login-password" placeholder="admin123" required>
-        </div>
-        <button type="submit">Entrar</button>
-        <div id="login-error" class="login-error"></div>
-      </form>
-    </div>
-  </div>
-
   <header>
     <div class="container">
       <h1>📊 Sistema de Gestión de Facturas y Pagos</h1>
@@ -685,7 +666,6 @@
     // Esperar a que la librería de Supabase esté lista
     async function initApp() {
       console.log('Intentando inicializar app...');
-      console.log('window.supabase disponible:', !!window.supabase);
 
       if (!window.supabase) {
         console.log('Esperando Supabase...');
@@ -694,82 +674,24 @@
       }
 
       try {
-        console.log('Creando cliente de Supabase con URL:', SUPABASE_URL);
+        console.log('Creando cliente de Supabase');
         supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        console.log('Cliente creado exitosamente');
 
-        // Verificar si hay sesión activa
-        const isAuthenticated = await checkAuth();
+        setupEventListeners();
+        console.log('Event listeners configurados');
 
-        if (isAuthenticated) {
-          setupEventListeners();
-          console.log('Event listeners configurados');
-
-          await loadInitialData();
-          console.log('Datos iniciales cargando...');
-
-          loadDashboard();
-          console.log('Dashboard inicializado');
-        }
-      } catch (error) {
-        console.error('Error en inicialización:', error);
-        document.querySelector('header p').textContent = 'Error: ' + error.message;
-      }
-    }
-
-    // FUNCIONES DE LOGIN
-    async function handleLogin(e) {
-      e.preventDefault();
-      const email = document.getElementById('login-email').value;
-      const password = document.getElementById('login-password').value;
-      const errorDiv = document.getElementById('login-error');
-      const loginForm = document.getElementById('login-form');
-
-      errorDiv.textContent = '';
-      loginForm.classList.add('login-loading');
-
-      try {
-        console.log('Intentando login con:', email);
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: email,
-          password: password
-        });
-
-        if (error) throw error;
-
-        console.log('Login exitoso:', data.user.email);
-        document.getElementById('login-overlay').classList.add('hidden');
-        loginForm.classList.remove('login-loading');
-
-        // Cargar la app después de login
         await loadInitialData();
+        console.log('Datos cargados');
+
         loadDashboard();
+        console.log('✅ App lista!');
       } catch (error) {
-        console.error('Error de login:', error);
-        errorDiv.textContent = 'Email o contraseña incorrectos';
-        loginForm.classList.remove('login-loading');
+        console.error('Error:', error);
+        document.querySelector('header p').textContent = '⚠️ Error: ' + error.message;
       }
     }
 
-    async function checkAuth() {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-
-        if (session) {
-          console.log('Usuario autenticado:', session.user.email);
-          document.getElementById('login-overlay').classList.add('hidden');
-          return true;
-        } else {
-          console.log('No hay sesión activa');
-          document.getElementById('login-overlay').classList.remove('hidden');
-          return false;
-        }
-      } catch (error) {
-        console.error('Error verificando auth:', error);
-        return false;
-      }
-    }
-
+    // Iniciar app cuando DOM esté listo
     console.log('Script cargado, esperando DOM listo...');
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', initApp);
