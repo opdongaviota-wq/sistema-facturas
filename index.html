@@ -579,7 +579,14 @@
     const SUPABASE_URL = 'https://lmathqteohlpkefnzjze.supabase.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_QzRnakg8vh7LhcTj_N4Uzw_Sxz2ddxh';
 
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    let supabase = null;
+
+    window.addEventListener('load', () => {
+      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      loadInitialData();
+      setupEventListeners();
+      loadDashboard();
+    });
 
     // Estado global
     const state = {
@@ -591,12 +598,7 @@
       paymentMethods: []
     };
 
-    // Inicialización
-    document.addEventListener('DOMContentLoaded', async () => {
-      await loadInitialData();
-      setupEventListeners();
-      loadDashboard();
-    });
+    // Inicialización - ya se hace en window.load event arriba
 
     // Cargar datos iniciales
     async function loadInitialData() {
