@@ -581,12 +581,24 @@
 
     let supabase = null;
 
-    window.addEventListener('load', () => {
+    // Esperar a que la librería de Supabase esté lista
+    function initApp() {
+      if (!window.supabase) {
+        setTimeout(initApp, 100);
+        return;
+      }
+
       supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-      loadInitialData();
       setupEventListeners();
+      loadInitialData();
       loadDashboard();
-    });
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initApp);
+    } else {
+      initApp();
+    }
 
     // Estado global
     const state = {
