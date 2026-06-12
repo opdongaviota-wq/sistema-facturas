@@ -586,17 +586,35 @@
 
     // Esperar a que la librería de Supabase esté lista
     function initApp() {
+      console.log('Intentando inicializar app...');
+      console.log('window.supabase disponible:', !!window.supabase);
+
       if (!window.supabase) {
+        console.log('Esperando Supabase...');
         setTimeout(initApp, 100);
         return;
       }
 
-      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-      setupEventListeners();
-      loadInitialData();
-      loadDashboard();
+      try {
+        console.log('Creando cliente de Supabase con URL:', SUPABASE_URL);
+        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        console.log('Cliente creado exitosamente');
+
+        setupEventListeners();
+        console.log('Event listeners configurados');
+
+        loadInitialData();
+        console.log('Datos iniciales cargando...');
+
+        loadDashboard();
+        console.log('Dashboard inicializado');
+      } catch (error) {
+        console.error('Error en inicialización:', error);
+        document.querySelector('header p').textContent = 'Error: ' + error.message;
+      }
     }
 
+    console.log('Script cargado, esperando DOM listo...');
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', initApp);
     } else {
