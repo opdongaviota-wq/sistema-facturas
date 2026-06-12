@@ -270,6 +270,81 @@
       margin-bottom: 10px;
     }
 
+    /* LOGIN OVERLAY */
+    .login-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    }
+
+    .login-overlay.hidden {
+      display: none;
+    }
+
+    .login-card {
+      background: white;
+      padding: 40px;
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      width: 100%;
+      max-width: 400px;
+    }
+
+    .login-card h1 {
+      color: #667eea;
+      margin-bottom: 30px;
+      text-align: center;
+      font-size: 24px;
+    }
+
+    .login-card .form-group {
+      margin-bottom: 20px;
+    }
+
+    .login-card input {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      font-size: 14px;
+    }
+
+    .login-card button {
+      width: 100%;
+      padding: 12px;
+      background: #667eea;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+
+    .login-card button:hover {
+      background: #764ba2;
+    }
+
+    .login-error {
+      color: #dc3545;
+      font-size: 14px;
+      margin-top: 10px;
+      text-align: center;
+    }
+
+    .login-loading {
+      opacity: 0.6;
+      pointer-events: none;
+    }
+
     @media (max-width: 768px) {
       .form-row {
         grid-template-columns: 1fr;
@@ -295,10 +370,33 @@
         padding: 10px 15px;
         font-size: 12px;
       }
+
+      .login-card {
+        margin: 20px;
+      }
     }
   </style>
 </head>
 <body>
+  <!-- LOGIN OVERLAY -->
+  <div id="login-overlay" class="login-overlay">
+    <div class="login-card">
+      <h1>🔐 Acceso</h1>
+      <form id="login-form" onsubmit="handleLogin(event)">
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="login-email" placeholder="usuario1@empresa.com" required>
+        </div>
+        <div class="form-group">
+          <label>Contraseña</label>
+          <input type="password" id="login-password" placeholder="admin123" required>
+        </div>
+        <button type="submit">Entrar</button>
+        <div id="login-error" class="login-error"></div>
+      </form>
+    </div>
+  </div>
+
   <header>
     <div class="container">
       <h1>📊 Sistema de Gestión de Facturas y Pagos</h1>
@@ -585,7 +683,7 @@
     let supabase = null;
 
     // Esperar a que la librería de Supabase esté lista
-    function initApp() {
+    async function initApp() {
       console.log('Intentando inicializar app...');
       console.log('window.supabase disponible:', !!window.supabase);
 
@@ -600,17 +698,75 @@
         supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         console.log('Cliente creado exitosamente');
 
-        setupEventListeners();
-        console.log('Event listeners configurados');
+        // Verificar si hay sesión activa
+        const isAuthenticated = await checkAuth();
 
-        loadInitialData();
-        console.log('Datos iniciales cargando...');
+        if (isAuthenticated) {
+          setupEventListeners();
+          console.log('Event listeners configurados');
 
-        loadDashboard();
-        console.log('Dashboard inicializado');
+          await loadInitialData();
+          console.log('Datos iniciales cargando...');
+
+          loadDashboard();
+          console.log('Dashboard inicializado');
+        }
       } catch (error) {
         console.error('Error en inicialización:', error);
         document.querySelector('header p').textContent = 'Error: ' + error.message;
+      }
+    }
+
+    // FUNCIONES DE LOGIN
+    async function handleLogin(e) {
+      e.preventDefault();
+      const email = document.getElementById('login-email').value;
+      const password = document.getElementById('login-password').value;
+      const errorDiv = document.getElementById('login-error');
+      const loginForm = document.getElementById('login-form');
+
+      errorDiv.textContent = '';
+      loginForm.classList.add('login-loading');
+
+      try {
+        console.log('Intentando login con:', email);
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: email,
+          password: password
+        });
+
+        if (error) throw error;
+
+        console.log('Login exitoso:', data.user.email);
+        document.getElementById('login-overlay').classList.add('hidden');
+        loginForm.classList.remove('login-loading');
+
+        // Cargar la app después de login
+        await loadInitialData();
+        loadDashboard();
+      } catch (error) {
+        console.error('Error de login:', error);
+        errorDiv.textContent = 'Email o contraseña incorrectos';
+        loginForm.classList.remove('login-loading');
+      }
+    }
+
+    async function checkAuth() {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+
+        if (session) {
+          console.log('Usuario autenticado:', session.user.email);
+          document.getElementById('login-overlay').classList.add('hidden');
+          return true;
+        } else {
+          console.log('No hay sesión activa');
+          document.getElementById('login-overlay').classList.remove('hidden');
+          return false;
+        }
+      } catch (error) {
+        console.error('Error verificando auth:', error);
+        return false;
       }
     }
 
