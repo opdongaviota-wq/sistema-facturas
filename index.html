@@ -191,6 +191,11 @@
       color: #721c24;
     }
 
+    .status.por_vencer {
+      background: #fff3cd;
+      color: #856404;
+    }
+
     .status.cobrado {
       background: #d4edda;
       color: #155724;
@@ -338,6 +343,22 @@
     <div id="invoices" class="section">
       <h2>Gestión de Facturas</h2>
 
+      <!-- CARGA DESDE EXCEL -->
+      <div style="background: #f0f4ff; padding: 20px; border-radius: 8px; margin-bottom: 30px; border-left: 4px solid #667eea;">
+        <h3 style="color: #667eea; margin-bottom: 15px;">📥 Cargar Facturas desde Excel</h3>
+        <div class="form-group">
+          <label>Selecciona archivo Excel (formato: Tipo Doc, Folio, Nombre Proveedor, RUT, Fecha Emisión, Monto)</label>
+          <input type="file" id="excel-file" accept=".xlsx,.xls,.csv" style="padding: 15px; border: 2px dashed #667eea;">
+        </div>
+        <p style="color: #666; font-size: 12px; margin-top: 10px;">
+          💡 El archivo debe tener columnas: Tipo Doc | Folio | Nombre Proveedor | RUT | Fecha Emisión | Monto<br>
+          Las facturas tendrán plazo de 30 días. Estados automáticos: Pendiente → Por Vencer (10 días antes) → Vencido
+        </p>
+        <button type="button" onclick="uploadExcelFacturas()" class="primary" style="margin-top: 10px;">✓ Importar Facturas</button>
+      </div>
+
+      <!-- INGRESO MANUAL -->
+      <h3 style="color: #667eea; margin-bottom: 15px;">📝 Registrar Factura Manual</h3>
       <form id="invoice-form">
         <div class="form-row">
           <div class="form-group">
@@ -552,6 +573,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.min.js"></script>
   <script>
     // Configuración de Supabase
     const SUPABASE_URL = 'https://lmathqteohlpkefnzjze.supabase.co';
@@ -665,18 +687,140 @@
       document.getElementById('check-form').addEventListener('submit', handleCheckSubmit);
     }
 
+    // Funciones para calcular estado automático
+    function calculateInvoiceStatus(emissionDate) {
+      const today = new Date();
+      const emission = new Date(emissionDate);
+      const daysElapsed = Math.floor((today - emission) / (1000 * 60 * 60 * 24));
+      const daysUntilDue = 30 - daysElapsed;
+
+      if (daysElapsed >= 30) return 'vencido';
+      if (daysUntilDue <= 10) return 'por_vencer';
+      return 'pendiente';
+    }
+
+    function calculateDueDate(emissionDate) {
+      const date = new Date(emissionDate);
+      date.setDate(date.getDate() + 30);
+      return date.toISOString().split('T')[0];
+    }
+
+    // Cargar y procesar Excel
+    async function uploadExcelFacturas() {
+      const fileInput = document.getElementById('excel-file');
+      const file = fileInput.files[0];
+
+      if (!file) {
+        showAlert('Selecciona un archivo Excel', 'error');
+        return;
+      }
+
+      try {
+        showAlert('⏳ Procesando archivo...', 'info');
+
+        const data = await file.arrayBuffer();
+        const workbook = XLSX.read(data, { type: 'array' });
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(worksheet);
+
+        if (rows.length === 0) {
+          showAlert('El archivo está vacío', 'error');
+          return;
+        }
+
+        let imported = 0;
+        let errors = 0;
+
+        for (const row of rows) {
+          try {
+            const tipoDoc = row['Tipo Doc'] || row['TIPO DOC'] || row['tipo_doc'];
+            const folio = String(row['Folio'] || row['FOLIO'] || row['folio']).trim();
+            const providerName = String(row['Nombre Proveedor'] || row['NOMBRE PROVEEDOR'] || row['proveedor']).trim();
+            const rut = String(row['RUT'] || row['rut']).trim();
+            const emissionDate = row['Fecha Emisión'] || row['FECHA EMISIÓN'] || row['fecha_emision'];
+            const amount = parseFloat(row['Monto'] || row['MONTO'] || row['monto']);
+
+            if (!folio || !providerName || !emissionDate || !amount) {
+              errors++;
+              continue;
+            }
+
+            // Convertir fecha si es necesario
+            let dateStr = emissionDate;
+            if (typeof emissionDate === 'number') {
+              const excelDate = new Date((emissionDate - 25569) * 86400 * 1000);
+              dateStr = excelDate.toISOString().split('T')[0];
+            } else {
+              dateStr = new Date(emissionDate).toISOString().split('T')[0];
+            }
+
+            // Obtener o crear proveedor
+            let provider = state.providers.find(p => p.rut === rut && p.name === providerName);
+            let providerId = provider?.id;
+
+            if (!providerId) {
+              const { data: newProvider, error: provError } = await supabase
+                .from('providers')
+                .insert([{ name: providerName, rut: rut || null }])
+                .select()
+                .single();
+
+              if (provError) throw provError;
+              providerId = newProvider.id;
+              state.providers.push(newProvider);
+            }
+
+            // Calcular estado y fecha vencimiento
+            const status = calculateInvoiceStatus(dateStr);
+            const dueDate = calculateDueDate(dateStr);
+            const invoiceNumber = `${tipoDoc || 'FAC'}-${folio}`;
+
+            // Insertar factura
+            const { error: invError } = await supabase
+              .from('invoices')
+              .insert([{
+                invoice_number: invoiceNumber,
+                date: dateStr,
+                provider_id: providerId,
+                category_id: state.categories[0]?.id, // Categoría por defecto
+                amount: amount,
+                due_date: dueDate,
+                status: status,
+                description: `Importado desde Excel - ${tipoDoc || 'Documento'} ${folio}`
+              }]);
+
+            if (invError) throw invError;
+            imported++;
+          } catch (rowError) {
+            console.error('Error en fila:', rowError);
+            errors++;
+          }
+        }
+
+        fileInput.value = '';
+        await loadInitialData();
+        loadInvoices();
+        showAlert(`✓ Importación completada: ${imported} facturas importadas${errors > 0 ? `, ${errors} errores` : ''}`, 'success');
+      } catch (error) {
+        showAlert('Error al procesar archivo: ' + error.message, 'error');
+      }
+    }
+
     async function handleInvoiceSubmit(e) {
       e.preventDefault();
       try {
+        const emissionDate = document.getElementById('invoice-date').value;
+        const invoiceNumber = document.getElementById('invoice-number').value;
+
         const invoiceData = {
-          invoice_number: document.getElementById('invoice-number').value,
-          date: document.getElementById('invoice-date').value,
+          invoice_number: invoiceNumber,
+          date: emissionDate,
           provider_id: document.getElementById('invoice-provider').value,
           category_id: document.getElementById('invoice-category').value,
           amount: parseFloat(document.getElementById('invoice-amount').value),
-          due_date: document.getElementById('invoice-due-date').value || null,
+          due_date: calculateDueDate(emissionDate),
           description: document.getElementById('invoice-description').value,
-          status: 'pendiente'
+          status: calculateInvoiceStatus(emissionDate)
         };
 
         const { error } = await supabase.from('invoices').insert([invoiceData]);
@@ -802,13 +946,24 @@
                 <td>${inv.providers?.name || '-'}</td>
                 <td>$${inv.amount.toLocaleString('es-CL')}</td>
                 <td>${new Date(inv.date).toLocaleDateString('es-CL')}</td>
-                <td><span class="status ${inv.status}">${inv.status}</span></td>
+                <td><span class="status ${inv.status}">${getStatusLabel(inv.status)}</span></td>
               </tr>
             `).join('') : '<tr><td colspan="5" style="text-align: center; color: #999;">Sin facturas registradas</td></tr>'}
           </tbody>
         </table>
       `;
       document.getElementById('recent-invoices').innerHTML = recentHtml;
+    }
+
+    function getStatusLabel(status) {
+      const labels = {
+        'pendiente': 'Pendiente',
+        'por_vencer': 'Por Vencer',
+        'vencido': 'Vencido',
+        'pagado': 'Pagado',
+        'parcial': 'Parcial'
+      };
+      return labels[status] || status;
     }
 
     function loadInvoices() {
@@ -834,7 +989,7 @@
                 <td>$${inv.amount.toLocaleString('es-CL')}</td>
                 <td>${new Date(inv.date).toLocaleDateString('es-CL')}</td>
                 <td>${inv.due_date ? new Date(inv.due_date).toLocaleDateString('es-CL') : '-'}</td>
-                <td><span class="status ${inv.status}">${inv.status}</span></td>
+                <td><span class="status ${inv.status}">${getStatusLabel(inv.status)}</span></td>
               </tr>
             `).join('')}
           </tbody>
@@ -988,7 +1143,7 @@
                     <td>$${inv.amount.toLocaleString('es-CL')}</td>
                     <td>$${paid.toLocaleString('es-CL')}</td>
                     <td>$${pending.toLocaleString('es-CL')}</td>
-                    <td><span class="status ${inv.status}">${inv.status}</span></td>
+                    <td><span class="status ${inv.status}">${getStatusLabel(inv.status)}</span></td>
                   </tr>
                 `;
               }).join('')}
