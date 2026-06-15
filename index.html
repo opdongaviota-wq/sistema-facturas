@@ -167,6 +167,9 @@
   .b-venc{background:#fbe3e0;color:#b23227}
   .b-canj{background:#e1f3e8;color:#1f7a47}
   .b-nc{background:#e7eefc;color:#3056a8}
+  .b-nd{background:#fbeede;color:#9a5b12}
+  .row-alert{display:block}
+  .ra-warn{display:inline-block;margin-top:4px;font-size:11px;font-weight:600;color:#a6620c;background:#fbeedd;padding:2px 8px;border-radius:6px}
 
   .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}
   @media(max-width:820px){.kpis{grid-template-columns:1fr 1fr}}
@@ -204,6 +207,11 @@
   .pi-meta{font-size:11.5px;color:var(--muted)}
   .prov-empty{padding:16px;text-align:center;color:var(--muted);font-size:12.5px}
   .prov-selected{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid var(--teal);background:#f3fbfb;border-radius:10px;padding:11px 14px}
+  .medio-line{border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px;background:#fafcfe}
+  .medio-head{display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-bottom:8px}
+  .medio-extra{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+  .medio-extra .field{margin:0}
+  @media(max-width:620px){.medio-extra{grid-template-columns:1fr}}
 
   .cheque-row{display:grid;grid-template-columns:1.3fr 1fr 1fr 1.1fr auto;gap:8px;align-items:end;margin-bottom:8px}
   @media(max-width:720px){.cheque-row{grid-template-columns:1fr 1fr}}
@@ -228,6 +236,12 @@
   .mismatch{color:var(--red);font-weight:600}
 
   .preview-note{font-size:12.5px;color:var(--muted);margin:6px 0 12px}
+  .preview-note.abono{color:#7a4a0c;background:#fbeedd;padding:9px 12px;border-radius:8px;line-height:1.45}
+  .ph-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}
+  @media(max-width:620px){.ph-grid{grid-template-columns:1fr;gap:12px}}
+  .ph-h{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:700;margin-bottom:6px}
+  .ph-line{display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:3px 0;border-bottom:1px dashed #eef2f6}
+  .ph-line:last-child{border-bottom:none}
   .file-drop{border:2px dashed var(--border);border-radius:12px;padding:26px;text-align:center;color:var(--muted);
     background:#fafcfe;cursor:pointer;transition:.12s}
   .file-drop:hover{border-color:var(--teal);color:var(--teal)}
@@ -294,19 +308,20 @@ const REST = SUPABASE_URL + '/rest/v1';
 
 const MODULES_BY_ROLE = {
   registrador:['facturas'],
-  tesoreria:['dashboard','pagos','cheques'],
-  supervisor:['dashboard','facturas','pagos','cheques','ajustes'],
+  tesoreria:['dashboard','pagos','historial','cheques'],
+  supervisor:['dashboard','facturas','pagos','historial','cheques','ajustes'],
 };
-const MOD_LABELS = { dashboard:'Dashboard', facturas:'Facturas', pagos:'Registrar pago', cheques:'Cheques', ajustes:'Ajustes' };
+const MOD_LABELS = { dashboard:'Dashboard', facturas:'Facturas', pagos:'Registrar pago', historial:'Pagos realizados', cheques:'Cheques', ajustes:'Ajustes' };
 const ROLE_LABELS = { registrador:'Registrador', tesoreria:'Tesorería', supervisor:'Supervisor' };
 const ROLE_DESC = { registrador:'Carga y consulta de facturas', tesoreria:'Pagos, cheques y caja', supervisor:'Acceso completo + ajustes' };
-const ALL_MODULES = ['dashboard','facturas','pagos','cheques','ajustes'];
+const ALL_MODULES = ['dashboard','facturas','pagos','historial','cheques','ajustes'];
 
 const SVG = p => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
 const ICONS = {
   dashboard:SVG('<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>'),
   facturas:SVG('<path d="M14 3v5h5"/><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/>'),
   pagos:SVG('<rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/>'),
+  historial:SVG('<circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 2"/>'),
   cheques:SVG('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 13l2.3 2.3L15 10"/>'),
   ajustes:SVG('<line x1="4" y1="7" x2="20" y2="7"/><circle cx="9" cy="7" r="2.4"/><line x1="4" y1="17" x2="20" y2="17"/><circle cx="15" cy="17" r="2.4"/>'),
 };
@@ -318,7 +333,7 @@ const ROLE_ICONS = {
 const LOCK_SVG = `<svg class="lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>`;
 
 /* =================== STATE =================== */
-let state = { role:null, user:null, facturas:[], alloc:[], pagos:[], cheques:[], usuarios:[], saldo:{}, activeMod:null };
+let state = { role:null, user:null, facturas:[], alloc:[], pagos:[], cheques:[], medios:[], usuarios:[], saldo:{}, activeMod:null };
 
 /* =================== API =================== */
 async function api(path, opts={}){
@@ -396,6 +411,28 @@ function parseDateSmart(v, fmt){
 }
 function saldoOf(f){ return Math.max(0, (+f.monto_total||0) - (state.saldo[f.id]||0)); }
 function isNC(f){ const t=normKey(f.tipo_doc); return t.includes('nota de credito')||t.includes('nota credito')||t==='nc'; }
+function isND(f){ const t=normKey(f.tipo_doc); return t.includes('nota de debito')||t.includes('nota debito')||t==='nd'; }
+function provNombre(f){ const n=(f.nombre||'').trim(); if(n) return n; const r=(f.rut||'').trim(); return (r&&state._rutNom&&state._rutNom[r])||''; }
+function countNombresPorCompletar(){
+  const map=state._rutNom||{}; let c=0;
+  state.facturas.forEach(f=>{ const r=(f.rut||'').trim(), n=(f.nombre||'').trim(); if(r&&!n&&map[r]) c++; });
+  return c;
+}
+async function normalizarNombres(btn){
+  const map=state._rutNom||{}; const byRut={};
+  state.facturas.forEach(f=>{ const r=(f.rut||'').trim(), n=(f.nombre||'').trim();
+    if(r&&!n&&map[r]) (byRut[r]=byRut[r]||[]).push(f.id); });
+  const ruts=Object.keys(byRut); const total=ruts.reduce((s,r)=>s+byRut[r].length,0);
+  if(!total){ toast('No hay nombres en blanco por completar','ok'); return; }
+  if(!confirm(`Se completará el nombre en ${total} factura(s) usando el RUT del proveedor (toma el nombre de otras facturas del mismo RUT). ¿Continuar?`)) return;
+  const orig=btn.innerHTML; btn.disabled=true; btn.innerHTML='<span class="spin"></span> Completando…';
+  try{
+    for(const r of ruts){
+      await api('/facturas?id=in.('+byRut[r].join(',')+')',{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({nombre:map[r]})});
+    }
+    toast(`${total} factura(s) actualizadas`,'ok'); await loadAll();
+  }catch(e){ btn.disabled=false; btn.innerHTML=orig; toast('Error: '+e.message,'err'); }
+}
 function saldoFirmado(f){ return (isNC(f)?-1:1)*saldoOf(f); }
 function estadoOf(f){ const p=state.saldo[f.id]||0, t=+f.monto_total||0;
   if(p<=0.0001) return 'pendiente'; if(p<t-0.0001) return 'pagada_parcial'; return 'pagada'; }
@@ -516,8 +553,11 @@ async function loadAll(){
       api('/usuarios?select=*&order=id.asc'),
     ]);
     state.facturas=facturas||[]; state.alloc=alloc||[]; state.cheques=cheques||[]; state.pagos=pagos||[]; state.usuarios=usuarios||[];
+    try{ state.medios=await api('/pago_medios?select=*')||[]; }catch(_){ state.medios=[]; }
     state.saldo={};
     state.alloc.forEach(a=>{ state.saldo[a.factura_id]=(state.saldo[a.factura_id]||0)+(+a.monto_aplicado||0); });
+    state._rutNom={};
+    state.facturas.forEach(f=>{ const r=(f.rut||'').trim(), n=(f.nombre||'').trim(); if(r&&n&&!state._rutNom[r]) state._rutNom[r]=n; });
     render();
   }catch(e){
     document.getElementById('main').innerHTML=`<div class="card pad empty"><div class="ico">⚠️</div>
@@ -532,6 +572,7 @@ function render(){
   const m=document.getElementById('main');
   if(state.activeMod==='facturas') m.innerHTML=viewFacturas();
   else if(state.activeMod==='pagos') renderPagos();
+  else if(state.activeMod==='historial') m.innerHTML=viewHistorial();
   else if(state.activeMod==='cheques') m.innerHTML=viewCheques();
   else if(state.activeMod==='dashboard') m.innerHTML=viewDashboard();
   else if(state.activeMod==='ajustes') m.innerHTML=viewAjustes();
@@ -566,7 +607,7 @@ function facFiltered(){
     if(facFilter.imp){ const cut=new Date(Date.now()-(+facFilter.imp)*86400000).toISOString();
       if(!(f.created_at && f.created_at>=cut)) return false; }
     if(facFilter.q){ const q=facFilter.q.toLowerCase();
-      if(!((f.nombre||'').toLowerCase().includes(q)||(f.rut||'').toLowerCase().includes(q)||(f.folio||'').toLowerCase().includes(q))) return false; }
+      if(!((provNombre(f)).toLowerCase().includes(q)||(f.rut||'').toLowerCase().includes(q)||(f.folio||'').toLowerCase().includes(q))) return false; }
     return true;
   });
   if(facFilter.imp) list=list.slice().sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||''));
@@ -578,6 +619,7 @@ function viewFacturas(){
   return `
   <div class="page-head"><h2>Facturas</h2><div class="spacer"></div>
     ${canCargar()?`<button id="facDelBtn" class="btn danger" style="display:none" onclick="deleteFacturas()">🗑 Eliminar (<span id="facSelN">0</span>)</button>
+    ${countNombresPorCompletar()>0?`<button class="btn ghost" onclick="normalizarNombres(this)" title="Rellena el nombre en blanco usando el RUT">✦ Completar nombres (${countNombresPorCompletar()})</button>`:''}
     <button class="btn ghost" onclick="openCargas()">📦 Cargas</button>
     <button class="btn navy" onclick="openImport()">⊕ Importar Excel</button> <button class="btn primary" onclick="openNuevaFactura()">+ Nueva factura</button>`:''}
   </div>
@@ -625,8 +667,8 @@ function facBodyHTML(){
     }
     return `<tr>
       ${chk}
-      <td><b>${esc(f.folio)}</b><br><span style="color:var(--muted);font-size:11.5px">${esc(f.tipo_doc||'')}</span>${isNC(f)?' <span class="badge b-nc">NC</span>':''}${facFilter.imp&&f.created_at?`<br><span style="color:var(--teal);font-size:10.5px">▼ Importada ${fmtDate(f.created_at)}</span>`:''}</td>
-      <td>${esc(f.nombre||'—')}<br><span style="color:var(--muted);font-size:11.5px">${esc(f.rut||'')}</span></td>
+      <td><b>${esc(f.folio)}</b><br><span style="color:var(--muted);font-size:11.5px">${esc(f.tipo_doc||'')}</span>${isNC(f)?' <span class="badge b-nc">NC</span>':''}${isND(f)?' <span class="badge b-nd">ND</span>':''}${facFilter.imp&&f.created_at?`<br><span style="color:var(--teal);font-size:10.5px">▼ Importada ${fmtDate(f.created_at)}</span>`:''}</td>
+      <td>${esc(provNombre(f)||'—')}<br><span style="color:var(--muted);font-size:11.5px">${esc(f.rut||'')}</span></td>
       <td>${fmtDate(f.fecha_emision)}</td>
       <td>${isNC(f)?'—':(f.fecha_vencimiento?fmtDate(f.fecha_vencimiento):'—')+dueChip(f)}</td>
       <td class="r money">${isNC(f)?'-'+CLP(f.monto_total):CLP(f.monto_total)}</td>
@@ -710,7 +752,11 @@ function openNuevaFactura(){
   host.innerHTML=`<div class="card pad" style="margin-top:16px;border:2px solid var(--teal)">
     <div class="card-title">📝 Nueva factura</div>
     <div class="grid3">
-      <div class="field"><label>Tipo Doc.</label><input id="nf_tipo" placeholder="Factura"></div>
+      <div class="field"><label>Tipo Doc.</label><select id="nf_tipo">
+        <option value="Factura">Factura</option>
+        <option value="Nota de Crédito">Nota de Crédito (resta)</option>
+        <option value="Nota de Débito">Nota de Débito (suma)</option>
+      </select></div>
       <div class="field"><label>Folio *</label><input id="nf_folio"></div>
       <div class="field"><label>Fecha emisión</label><input id="nf_emi" type="date" value="${todayISO()}"></div>
       <div class="field"><label>RUT proveedor</label><input id="nf_rut" placeholder="76.123.456-7"></div>
@@ -843,7 +889,7 @@ async function doImport(btn){
 }
 
 /* =================== REGISTRAR PAGO =================== */
-let pay={ rut:null, items:{}, medio:'transferencia', cheques:[], obs:'', fechaOp:todayISO() };
+let pay={ rut:null, items:{}, medios:[{tipo:'transferencia',monto:'',fecha:todayISO(),ref:'',folio:'',banco:'',canje:''}], obs:'' };
 let payEstado=''; let payVentana='';
 function payFacMatch(f){
   if(saldoOf(f)<=0.0001) return false;
@@ -861,8 +907,8 @@ function payFacMatch(f){
   }
   return true;
 }
-function setPayEstado(v){ payEstado=v; payVentana=''; provQuery=''; pay.rut=null; pay.items={}; pay.cheques=[]; renderPagos(); }
-function setPayVentana(v){ payVentana=v; provQuery=''; pay.rut=null; pay.items={}; pay.cheques=[]; renderPagos(); }
+function setPayEstado(v){ payEstado=v; payVentana=''; provQuery=''; pay.rut=null; pay.items={}; pay.medios=freshMedios(); renderPagos(); }
+function setPayVentana(v){ payVentana=v; provQuery=''; pay.rut=null; pay.items={}; pay.medios=freshMedios(); renderPagos(); }
 function renderPagos(){
   const m=document.getElementById('main');
   const provs=proveedoresConSaldo();
@@ -928,34 +974,45 @@ function selectedProvHTML(){
     </div>
   </div>`;
 }
-function clearProv(){ pay.rut=null; pay.items={}; pay.cheques=[]; provQuery=''; renderPagos(); }
+function clearProv(){ pay.rut=null; pay.items={}; pay.medios=freshMedios(); provQuery=''; renderPagos(); }
 function proveedoresConSaldo(){
   const map={};
   state.facturas.forEach(f=>{ if(!payFacMatch(f)) return;
-    const key=f.rut||('sinrut|'+(f.nombre||''));
-    if(!map[key]) map[key]={rut:f.rut,nombre:f.nombre,saldo:0,n:0,fac:0};
+    const nom=provNombre(f);
+    const key=f.rut||('sinrut|'+nom);
+    if(!map[key]) map[key]={rut:f.rut,nombre:nom,saldo:0,n:0,fac:0};
+    if(!map[key].nombre && nom) map[key].nombre=nom;
     map[key].saldo+=saldoFirmado(f); map[key].n++;
     if(!isNC(f)) map[key].fac+=saldoOf(f);
   });
   return Object.values(map).filter(p=>p.fac>0.0001).sort((a,b)=>b.saldo-a.saldo);
 }
-function selectProv(key){ pay.rut=key||null; pay.items={}; pay.cheques=[]; renderPagos(); }
+function selectProv(key){ pay.rut=key||null; pay.items={}; pay.medios=freshMedios(); renderPagos(); }
 function provFacturas(){
   return state.facturas.filter(f=>{ if(!payFacMatch(f)) return false;
-    const key=f.rut||('sinrut|'+(f.nombre||'')); return key===pay.rut; });
+    const key=f.rut||('sinrut|'+provNombre(f)); return key===pay.rut; });
 }
 function payRowHTML(f){
-  const sal=saldoOf(f); const on=pay.items[f.id]!=null; const nc=isNC(f);
+  const sal=saldoOf(f); const on=pay.items[f.id]!=null; const nc=isNC(f); const nd=isND(f);
+  const previo=state.saldo[f.id]||0; const parcial=!nc && previo>0.0001;
+  const tag = nc?' <span class="badge b-nc">NC</span>':nd?' <span class="badge b-nd">ND</span>':'';
   const meta = nc
     ? `Nota de crédito · Disponible ${CLP(sal)} · <span style="color:var(--teal);font-weight:600">se resta</span>`
-    : `Emisión ${fmtDate(f.fecha_emision)} ${f.fecha_vencimiento?'· Vence '+fmtDate(f.fecha_vencimiento)+' ':''}· Saldo ${CLP(sal)}${dueChip(f)}`;
+    : `${nd?'Nota de débito · <span style="color:var(--amber);font-weight:600">se suma</span> · ':''}Emisión ${fmtDate(f.fecha_emision)} ${f.fecha_vencimiento?'· Vence '+fmtDate(f.fecha_vencimiento)+' ':''}· Saldo ${CLP(sal)}${parcial?` <span class="badge b-parc">abonado ${CLP(previo)}</span>`:''}${dueChip(f)}`;
   return `<div class="fac-pick ${on?'on':''} ${nc?'nc':''}">
     <input type="checkbox" ${on?'checked':''} onchange="toggleFac(${f.id},${sal})">
-    <div class="info"><b>${esc(f.folio)}</b> · ${esc(f.tipo_doc||(nc?'Nota de crédito':'Factura'))}
-      <span>${meta}</span></div>
+    <div class="info"><b>${esc(f.folio)}</b> · ${esc(f.tipo_doc||(nc?'Nota de crédito':'Factura'))}${tag}
+      <span>${meta}</span>
+      <span class="row-alert" id="ralert_${f.id}">${on?partialAlertText(f.id):''}</span></div>
     <div class="amt-in"><input inputmode="numeric" placeholder="0" value="${on?Math.round(pay.items[f.id]):''}"
       oninput="setMonto(${f.id},this.value,${sal})" ${on?'':'disabled'}></div>
   </div>`;
+}
+function partialAlertText(id){
+  const f=state.facturas.find(x=>x.id==id); if(!f||isNC(f)) return '';
+  const v=+pay.items[id]||0; const sal=saldoOf(f);
+  if(v>0 && v<sal-0.0001) return `<span class="ra-warn">⚠ Pago con diferencia · queda saldo ${CLP(sal-v)} a favor del proveedor</span>`;
+  return '';
 }
 function payTotbarHTML(){
   const fac=sumFacturasSel(), nc=sumNCSel(), net=fac-nc;
@@ -968,6 +1025,7 @@ function payTotbarHTML(){
   }
   return `<div class="totbar"><span>Total a pagar</span><b>${CLP(net)}</b></div>`;
 }
+function freshMedios(){ return [{tipo:'transferencia',monto:'',fecha:todayISO(),ref:'',folio:'',banco:'',canje:''}]; }
 function renderPayBody(){
   const facsAll=provFacturas();
   const facturas=facsAll.filter(f=>!isNC(f));
@@ -976,104 +1034,144 @@ function renderPayBody(){
   host.innerHTML=`
   <div class="card pad">
     <div class="card-title">2 · Facturas a pagar</div>
+    <div class="preview-note">Puedes pagar el total o un <b>abono parcial</b> (edita el monto). El saldo restante queda a favor del proveedor y aparece en el próximo pago.</div>
     ${facturas.map(payRowHTML).join('')}
     ${ncs.length?`<div class="card-title" style="margin-top:10px;color:var(--teal)">Notas de crédito (se restan)</div>${ncs.map(payRowHTML).join('')}`:''}
     <div id="payTotbar">${payTotbarHTML()}</div>
 
-    <div class="card-title">3 · Medio de pago</div>
-    <div class="field" style="max-width:280px">
-      <select onchange="setMedio(this.value)">
-        <option value="transferencia" ${pay.medio==='transferencia'?'selected':''}>Transferencia</option>
-        <option value="web_pay" ${pay.medio==='web_pay'?'selected':''}>Web Pay</option>
-        <option value="cheque" ${pay.medio==='cheque'?'selected':''}>Cheque</option>
-      </select>
-    </div>
-    ${pay.medio!=='cheque'?`<div class="field" style="max-width:280px"><label>Fecha de la ${pay.medio==='web_pay'?'operación (Web Pay)':'transferencia'}</label><input type="date" value="${pay.fechaOp||todayISO()}" onchange="pay.fechaOp=this.value"></div>`:''}
-    <div id="chequeBox"></div>
+    <div class="card-title">3 · Medios de pago</div>
+    <div class="preview-note">Puedes combinar varios medios (ej: transferencia + cheque). La suma debe igualar el neto a pagar.</div>
+    <div>${pay.medios.map(medioRowHTML).join('')}</div>
+    <button class="btn sm ghost" onclick="addMedio()">+ Agregar medio de pago</button>
+    <div id="mediosTot">${mediosTotHTML()}</div>
 
-    <div class="field" style="margin-top:6px"><label>Observación (opcional)</label><input placeholder="N° de operación, comentario…" value="${esc(pay.obs)}" oninput="pay.obs=this.value"></div>
+    <div class="field" style="margin-top:10px"><label>Observación (opcional)</label><input placeholder="Comentario general del pago…" value="${esc(pay.obs)}" oninput="pay.obs=this.value"></div>
     <div style="display:flex;gap:10px;margin-top:8px">
       <button class="btn primary" onclick="submitPago(this)">Registrar pago</button>
     </div>
   </div>`;
-  renderChequeBox();
 }
+function medioRowHTML(mi,i){
+  const sel=t=>mi.tipo===t?'selected':'';
+  let extra='';
+  if(mi.tipo==='cheque'){
+    extra=`
+      <div class="field"><label>Folio cheque</label><input value="${esc(mi.folio||'')}" oninput="updMedio(${i},'folio',this.value)"></div>
+      <div class="field"><label>Banco</label><input value="${esc(mi.banco||'')}" oninput="updMedio(${i},'banco',this.value)"></div>
+      <div class="field"><label>Fecha canje</label><input type="date" value="${esc(mi.canje||'')}" oninput="updMedio(${i},'canje',this.value)"></div>`;
+  } else {
+    extra=`
+      <div class="field"><label>Fecha ${mi.tipo==='web_pay'?'operación':'transferencia'}</label><input type="date" value="${esc(mi.fecha||todayISO())}" oninput="updMedio(${i},'fecha',this.value)"></div>
+      <div class="field"><label>Referencia (opcional)</label><input value="${esc(mi.ref||'')}" placeholder="N° operación" oninput="updMedio(${i},'ref',this.value)"></div>`;
+  }
+  return `<div class="medio-line">
+    <div class="medio-head">
+      <div class="field" style="min-width:150px;margin:0"><label>Medio</label>
+        <select onchange="setMedioTipo(${i},this.value)">
+          <option value="transferencia" ${sel('transferencia')}>Transferencia</option>
+          <option value="web_pay" ${sel('web_pay')}>Web Pay</option>
+          <option value="cheque" ${sel('cheque')}>Cheque</option>
+        </select></div>
+      <div class="field" style="min-width:140px;margin:0"><label>Monto</label><input inputmode="numeric" value="${mi.monto||''}" oninput="updMedio(${i},'monto',this.value)"></div>
+      ${pay.medios.length>1?`<button class="btn sm danger" style="align-self:end;margin-bottom:1px" onclick="rmMedio(${i})">✕</button>`:''}
+    </div>
+    <div class="medio-extra">${extra}</div>
+  </div>`;
+}
+function addMedio(){ pay.medios.push({tipo:'transferencia',monto:'',fecha:todayISO(),ref:'',folio:'',banco:'',canje:''}); renderPayBody(); }
+function rmMedio(i){ pay.medios.splice(i,1); if(!pay.medios.length) pay.medios=freshMedios(); renderPayBody(); }
+function setMedioTipo(i,v){ pay.medios[i].tipo=v; renderPayBody(); }
+function updMedio(i,k,v){ pay.medios[i][k]=v; if(k==='monto') updateMediosTot(); }
+function sumMedios(){ return pay.medios.reduce((s,m)=>s+parseMoney(m.monto),0); }
+function mediosTotHTML(){
+  const asign=sumMedios(), net=sumItems();
+  if(net<=0) return `<div class="totbar" style="margin-top:12px"><span>Asignado en medios</span><b>${CLP(asign)} / ${CLP(net)}</b></div>`;
+  const exceso = asign>net+1, parcial = asign>0 && asign<net-1;
+  const cls = exceso?'color:var(--red)':(parcial?'color:#a6620c':'');
+  let msg='';
+  if(exceso) msg=`<div class="preview-note mismatch">⚠ La suma de los medios (${CLP(asign)}) no puede superar el neto a pagar (${CLP(net)}).</div>`;
+  else if(parcial){ const s=net-asign; msg=`<div class="preview-note abono"><b>Abono parcial:</b> se pagará ${CLP(asign)} y quedará un saldo de <b>${CLP(s)}</b> a favor del proveedor (se reflejará en el próximo pago para cuadrar con ND/NC).</div>`; }
+  return `<div class="totbar" style="margin-top:12px"><span>Asignado en medios</span><b style="${cls}">${CLP(asign)} / ${CLP(net)}</b></div>${msg}`;
+}
+function computeApplied(){
+  // Reparte (efectivo + NC) entre las facturas seleccionadas, de más antigua a más nueva.
+  // Las NC se aplican completas. La diferencia no cubierta queda como saldo en las facturas más nuevas.
+  const applied={};
+  const ncs=Object.entries(pay.items).filter(([id,v])=>+v>0 && isNC(state.facturas.find(x=>x.id==id)));
+  ncs.forEach(([id,v])=>applied[id]=+v);
+  let facs=Object.entries(pay.items).filter(([id,v])=>+v>0 && !isNC(state.facturas.find(x=>x.id==id)))
+    .map(([id,v])=>({id,cap:+v,f:state.facturas.find(x=>x.id==id)}))
+    .sort((a,b)=>String(a.f.fecha_emision||'').localeCompare(String(b.f.fecha_emision||'')));
+  const cash = sumMedios();
+  let budget = cash + sumNCSel();           // efectivo + NC disponible para aplicar a facturas
+  for(const it of facs){
+    const ap=Math.min(it.cap, Math.max(0,budget));
+    applied[it.id]=ap; budget-=ap;
+  }
+  return applied;
+}
+function updateMediosTot(){ const c=document.getElementById('mediosTot'); if(c) c.innerHTML=mediosTotHTML(); }
 function toggleFac(id,sal){ if(pay.items[id]!=null) delete pay.items[id]; else pay.items[id]=sal; renderPayBody(); }
-function setMonto(id,v,sal){ let n=parseMoney(v); if(n>sal) n=sal; pay.items[id]=n;
-  updatePayTotals(); renderChequeTotals(); }
+function setMonto(id,v,sal){ let n=parseMoney(v); if(n>sal) n=sal; pay.items[id]=n; updatePayTotals(); updateMediosTot();
+  const ra=document.getElementById('ralert_'+id); if(ra) ra.innerHTML=partialAlertText(id); }
 function updatePayTotals(){ const c=document.getElementById('payTotbar'); if(c) c.innerHTML=payTotbarHTML(); }
 function sumFacturasSel(){ return Object.entries(pay.items).reduce((s,[id,v])=>{ const f=state.facturas.find(x=>x.id==id); return (f&&!isNC(f))?s+(+v||0):s; },0); }
 function sumNCSel(){ return Object.entries(pay.items).reduce((s,[id,v])=>{ const f=state.facturas.find(x=>x.id==id); return (f&&isNC(f))?s+(+v||0):s; },0); }
 function sumItems(){ return sumFacturasSel()-sumNCSel(); }
-function setMedio(v){ pay.medio=v; if(v!=='cheque') pay.cheques=[]; renderPayBody(); }
-function renderChequeBox(){
-  const box=document.getElementById('chequeBox'); if(!box) return;
-  if(pay.medio!=='cheque'){ box.innerHTML=''; return; }
-  if(!pay.cheques.length) pay.cheques.push({folio:'',banco:'',monto:'',canje:''});
-  box.innerHTML=`
-    <div class="card-title" style="margin-top:14px">Cheques</div>
-    <div>${pay.cheques.map((c,i)=>chequeRowHTML(c,i)).join('')}</div>
-    <button class="btn sm ghost" onclick="addCheque()">+ Agregar cheque</button>
-    <div class="totbar" style="margin-top:12px"><span>Suma cheques</span><b id="totCheque">${CLP(sumCheques())}</b></div>
-    <div id="chkWarn"></div>`;
-  renderChequeTotals();
-}
-function chequeRowHTML(c,i){
-  return `<div class="cheque-row">
-    <div class="field"><label>Folio cheque</label><input value="${esc(c.folio)}" oninput="updCheque(${i},'folio',this.value)"></div>
-    <div class="field"><label>Banco</label><input value="${esc(c.banco)}" oninput="updCheque(${i},'banco',this.value)"></div>
-    <div class="field"><label>Monto</label><input inputmode="numeric" value="${c.monto}" oninput="updCheque(${i},'monto',this.value)"></div>
-    <div class="field"><label>Fecha canje</label><input type="date" value="${esc(c.canje)}" oninput="updCheque(${i},'canje',this.value)"></div>
-    <div class="field"><label>&nbsp;</label><button class="btn sm danger" onclick="rmCheque(${i})">✕</button></div>
-  </div>`;
-}
-function addCheque(){ pay.cheques.push({folio:'',banco:'',monto:'',canje:''}); renderChequeBox(); }
-function rmCheque(i){ pay.cheques.splice(i,1); if(!pay.cheques.length) pay.cheques.push({folio:'',banco:'',monto:'',canje:''}); renderChequeBox(); }
-function updCheque(i,k,v){ pay.cheques[i][k]=v; if(k==='monto') renderChequeTotals(); }
-function sumCheques(){ return pay.cheques.reduce((s,c)=>s+parseMoney(c.monto),0); }
-function renderChequeTotals(){
-  const tc=document.getElementById('totCheque'); if(tc) tc.textContent=CLP(sumCheques());
-  const w=document.getElementById('chkWarn');
-  if(w){ const diff=Math.abs(sumCheques()-sumItems());
-    w.innerHTML = (pay.medio==='cheque' && sumItems()>0 && diff>1) ?
-      `<div class="preview-note mismatch">⚠ La suma de cheques (${CLP(sumCheques())}) no coincide con el neto a pagar (${CLP(sumItems())}).</div>` : ''; }
-}
 async function submitPago(btn){
   const items=Object.entries(pay.items).filter(([id,v])=>+v>0);
   if(!items.length){ toast('Selecciona al menos un documento con monto','err'); return; }
   const hayFactura=items.some(([id])=>{ const f=state.facturas.find(x=>x.id==id); return f && !isNC(f); });
   if(!hayFactura){ toast('Selecciona al menos una factura a pagar','err'); return; }
   const net=sumItems();
-  if(net<0){ toast('Las notas de crédito superan las facturas seleccionadas. Reduce las NC o agrega facturas.','err'); return; }
-  let chequesRec=[];
-  if(pay.medio==='cheque' && net>0){
-    chequesRec=pay.cheques.filter(c=>c.folio.trim()||parseMoney(c.monto)>0)
-      .map(c=>({folio_cheque:c.folio.trim(),banco:c.banco.trim()||null,monto:parseMoney(c.monto),
-        fecha_canje:c.canje||null,estado:'pendiente'}));
-    if(!chequesRec.length){ toast('Agrega al menos un cheque con folio y monto','err'); return; }
-    if(chequesRec.some(c=>!c.folio_cheque)){ toast('Cada cheque necesita folio','err'); return; }
-    if(chequesRec.some(c=>!c.fecha_canje)){ toast('Cada cheque necesita fecha de canje','err'); return; }
-    if(Math.abs(sumCheques()-net)>1){ toast('La suma de cheques debe igualar el neto a pagar','err'); return; }
+  if(net<0){ toast('Las notas de crédito superan las facturas seleccionadas.','err'); return; }
+  const lineas=pay.medios.filter(m=>parseMoney(m.monto)>0 || (m.tipo==='cheque'&&(m.folio||'').trim()));
+  const cash=sumMedios();
+  if(net>0){
+    if(!lineas.length){ toast('Agrega al menos un medio de pago','err'); return; }
+    for(const m of lineas){
+      if(parseMoney(m.monto)<=0){ toast('Cada medio necesita un monto','err'); return; }
+      if(m.tipo==='cheque'){
+        if(!(m.folio||'').trim()){ toast('Cada cheque necesita folio','err'); return; }
+        if(!m.canje){ toast('Cada cheque necesita fecha de canje','err'); return; }
+      }
+    }
+    if(cash<=0){ toast('Ingresa el monto de los medios','err'); return; }
+    if(cash>net+1){ toast('La suma de los medios no puede superar el neto a pagar','err'); return; }
+    // cash < net  ->  abono parcial permitido (queda saldo a favor del proveedor)
   }
+  const applied=computeApplied();
+  const allocRec=Object.entries(applied).filter(([id,v])=>+v>0.0001)
+    .map(([id,v])=>({factura_id:+id,monto_aplicado:Math.round(+v*100)/100}));
+  if(!allocRec.length){ toast('El abono no alcanza a aplicarse a ninguna factura','err'); return; }
   const prov=provFacturas()[0]||{};
+  const tipos=[...new Set(lineas.map(m=>m.tipo))];
+  const medioResumen = tipos.length===0?'ajuste':(tipos.length===1?tipos[0]:'mixto');
+  const fop=lineas.filter(m=>m.tipo!=='cheque'&&m.fecha).map(m=>m.fecha).sort()[0]||todayISO();
   btn.disabled=true; btn.innerHTML='<span class="spin"></span> Registrando…';
+  let pago=null;
   try{
-    const pago=(await api('/pagos',{method:'POST',headers:{Prefer:'return=representation'},
-      body:JSON.stringify({ rut:prov.rut||null, nombre:prov.nombre||null, fecha_pago:(pay.medio==='cheque'?todayISO():(pay.fechaOp||todayISO())),
-        medio_pago:pay.medio, monto_total:net, observacion:pay.obs.trim()||null })}))[0];
-    const allocRec=items.map(([id,v])=>({pago_id:pago.id,factura_id:+id,monto_aplicado:+v}));
-    await api('/pagos_facturas',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify(allocRec)});
-    if(chequesRec.length){ await api('/cheques',{method:'POST',headers:{Prefer:'return=minimal'},
-      body:JSON.stringify(chequesRec.map(c=>({...c,pago_id:pago.id})))}); }
-    await Promise.all(items.map(async([id,v])=>{
-      const f=state.facturas.find(x=>x.id==id); const pagado=(state.saldo[id]||0)+(+v);
+    pago=(await api('/pagos',{method:'POST',headers:{Prefer:'return=representation'},
+      body:JSON.stringify({ rut:prov.rut||null, nombre:provNombre(prov)||prov.nombre||null, fecha_pago:fop,
+        medio_pago:medioResumen, monto_total:(net>0?cash:0), observacion:pay.obs.trim()||null })}))[0];
+    const medRec=lineas.filter(m=>m.tipo!=='cheque').map(m=>({pago_id:pago.id,medio:m.tipo,monto:parseMoney(m.monto),fecha_op:m.fecha||null,referencia:(m.ref||'').trim()||null}));
+    if(medRec.length) await api('/pago_medios',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify(medRec)});
+    const chqRec=lineas.filter(m=>m.tipo==='cheque').map(m=>({pago_id:pago.id,folio_cheque:m.folio.trim(),banco:(m.banco||'').trim()||null,monto:parseMoney(m.monto),fecha_canje:m.canje||null,estado:'pendiente'}));
+    if(chqRec.length) await api('/cheques',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify(chqRec)});
+    await api('/pagos_facturas',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify(allocRec.map(a=>({...a,pago_id:pago.id})))});
+    await Promise.all(allocRec.map(async(a)=>{
+      const f=state.facturas.find(x=>x.id==a.factura_id); const pagado=(state.saldo[a.factura_id]||0)+a.monto_aplicado;
       const est = pagado>=(+f.monto_total)-0.0001 ? 'pagada' : 'pagada_parcial';
-      await api('/facturas?id=eq.'+id,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({estado:est})});
+      await api('/facturas?id=eq.'+a.factura_id,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({estado:est})});
     }));
     toast('Pago registrado','ok');
-    pay={rut:null,items:{},medio:'transferencia',cheques:[],obs:'',fechaOp:todayISO()};
+    pay={rut:null,items:{},medios:freshMedios(),obs:''}; provQuery='';
     await loadAll(); navTo('pagos');
-  }catch(e){ btn.disabled=false; btn.textContent='Registrar pago'; toast('Error: '+e.message,'err'); }
+  }catch(e){
+    if(pago){ try{ await api('/pagos?id=eq.'+pago.id,{method:'DELETE',headers:{Prefer:'return=minimal'}}); }catch(_){ } }
+    btn.disabled=false; btn.textContent='Registrar pago';
+    toast(/pago_medios/i.test(e.message)?'Falta crear la tabla pago_medios. Corre el SQL en Supabase.':'Error: '+e.message,'err');
+  }
 }
 
 /* =================== CHEQUES =================== */
@@ -1116,6 +1214,166 @@ async function canjear(id,btn){
       body:JSON.stringify({estado:'canjeado',fecha_canjeado:todayISO()})});
     toast('Cheque canjeado','ok'); await loadAll();
   }catch(e){ btn.disabled=false; btn.textContent='Marcar canjeado'; toast('Error: '+e.message,'err'); }
+}
+
+/* =================== PAGOS REALIZADOS (HISTORIAL) =================== */
+const MEDIO_LAB = { transferencia:'Transferencia', web_pay:'Web Pay', cheque:'Cheque', mixto:'Mixto', ajuste:'Ajuste' };
+let histQuery='';
+function canEditarPago(){ return state.role==='tesoreria'||state.role==='supervisor'; }
+function viewHistorial(){
+  return `
+  <div class="page-head"><h2>Pagos realizados</h2></div>
+  <div class="card pad" style="margin-bottom:12px">
+    <div class="field"><label>Buscar proveedor o RUT</label><input placeholder="Escribe para filtrar…" value="${esc(histQuery)}" oninput="histQuery=this.value;rerenderHist()"></div>
+  </div>
+  <div id="histList">${histListHTML()}</div>`;
+}
+function histListHTML(){
+  const q=normKey(histQuery);
+  let pagos=[...state.pagos].sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')));
+  if(q) pagos=pagos.filter(p=>normKey((p.nombre||'')+' '+(p.rut||'')).includes(q));
+  if(!pagos.length) return `<div class="card pad"><div class="empty"><div class="ico">🧾</div><div class="t">Sin pagos registrados</div></div></div>`;
+  return pagos.map(pagoCardHTML).join('');
+}
+function rerenderHist(){ const c=document.getElementById('histList'); if(c) c.innerHTML=histListHTML(); }
+function pagoCardHTML(p){
+  const allocs=state.alloc.filter(a=>a.pago_id===p.id);
+  const medios=state.medios.filter(m=>m.pago_id===p.id);
+  const cheques=state.cheques.filter(c=>c.pago_id===p.id);
+  const facHTML=allocs.map(a=>{ const f=state.facturas.find(x=>x.id===a.factura_id);
+    return `<div class="ph-line"><span>${f?esc(f.folio):'#'+a.factura_id} <span style="color:var(--muted)">${f?esc(f.tipo_doc||''):''}</span></span><b>${CLP(a.monto_aplicado)}</b></div>`; }).join('')
+    || `<div class="ph-line" style="color:var(--muted)">Sin facturas asociadas</div>`;
+  const medHTML=[
+    ...medios.map(m=>`<div class="ph-line"><span>${MEDIO_LAB[m.medio]||m.medio}${m.fecha_op?' · '+fmtDate(m.fecha_op):''}${m.referencia?' · '+esc(m.referencia):''}</span><b>${CLP(m.monto)}</b></div>`),
+    ...cheques.map(c=>`<div class="ph-line"><span>Cheque ${esc(c.folio_cheque||'')}${c.banco?' · '+esc(c.banco):''} · canje ${c.fecha_canje?fmtDate(c.fecha_canje):'—'} ${c.estado==='canjeado'?'<span class="badge b-canj">canjeado</span>':'<span class="badge b-pend">pendiente</span>'}</span><b>${CLP(c.monto)}</b></div>`)
+  ].join('') || `<div class="ph-line" style="color:var(--muted)">Sin medios registrados</div>`;
+  const acc = canEditarPago()? `<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+      <button class="btn sm" onclick="editPagoMedios(${p.id})">✏️ Editar medios</button>
+      <button class="btn sm danger" onclick="anularPago(${p.id})">Anular pago</button>
+    </div>`:'';
+  return `<div class="card pad" style="margin-bottom:12px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+      <div><div style="font-weight:700;color:var(--navy);font-size:15px">${esc(p.nombre||p.rut||'Proveedor')}</div>
+        <div style="color:var(--muted);font-size:12px">${p.rut?esc(p.rut)+' · ':''}Pago ${fmtDate(p.fecha_pago)} · ${MEDIO_LAB[p.medio_pago]||p.medio_pago||'—'}</div></div>
+      <div style="text-align:right"><div style="font-weight:800;color:var(--navy);font-size:17px">${CLP(p.monto_total)}</div></div>
+    </div>
+    <div class="ph-grid">
+      <div><div class="ph-h">Facturas aplicadas</div>${facHTML}</div>
+      <div><div class="ph-h">Medios de pago</div>${medHTML}</div>
+    </div>
+    ${p.observacion?`<div style="margin-top:8px;color:var(--muted);font-size:12.5px">📝 ${esc(p.observacion)}</div>`:''}
+    ${acc}
+  </div>`;
+}
+/* ---- Editar medios de un pago ---- */
+let pedit=null;
+function editPagoMedios(pagoId){
+  const p=state.pagos.find(x=>x.id===pagoId); if(!p) return;
+  const med=state.medios.filter(m=>m.pago_id===pagoId).map(m=>({tipo:m.medio,monto:String(Math.round(+m.monto)),fecha:m.fecha_op||todayISO(),ref:m.referencia||'',folio:'',banco:'',canje:''}));
+  const chq=state.cheques.filter(c=>c.pago_id===pagoId).map(c=>({tipo:'cheque',monto:String(Math.round(+c.monto)),fecha:'',ref:'',folio:c.folio_cheque||'',banco:c.banco||'',canje:(c.fecha_canje||'').slice(0,10)}));
+  let lines=[...med,...chq]; if(!lines.length) lines=freshMedios();
+  pedit={pagoId, target:+p.monto_total||0, medios:lines, obs:p.observacion||''};
+  renderEditMedios();
+}
+function closePedit(){ pedit=null; document.getElementById('modalHost').innerHTML=''; }
+function peSum(){ return pedit.medios.reduce((s,m)=>s+parseMoney(m.monto),0); }
+function peAdd(){ pedit.medios.push({tipo:'transferencia',monto:'',fecha:todayISO(),ref:'',folio:'',banco:'',canje:''}); renderEditMedios(); }
+function peRm(i){ pedit.medios.splice(i,1); if(!pedit.medios.length) pedit.medios=freshMedios(); renderEditMedios(); }
+function peSetTipo(i,v){ pedit.medios[i].tipo=v; renderEditMedios(); }
+function peUpd(i,k,v){ pedit.medios[i][k]=v; if(k==='monto') peRefreshTot(); }
+function peRefreshTot(){ const asign=peSum(),tgt=pedit.target,ok=Math.abs(asign-tgt)<=1;
+  const t=document.getElementById('peTot'); if(t){ t.textContent=`${CLP(asign)} / ${CLP(tgt)}`; t.style.color=ok?'':'var(--red)'; }
+  const n=document.getElementById('peNote'); if(n) n.innerHTML=ok?'':`<div class="preview-note mismatch">⚠ El total debe igualar ${CLP(tgt)}.</div>`; }
+function peditRowHTML(mi,i){
+  const sel=t=>mi.tipo===t?'selected':'';
+  let extra='';
+  if(mi.tipo==='cheque'){
+    extra=`<div class="field"><label>Folio cheque</label><input value="${esc(mi.folio||'')}" oninput="peUpd(${i},'folio',this.value)"></div>
+      <div class="field"><label>Banco</label><input value="${esc(mi.banco||'')}" oninput="peUpd(${i},'banco',this.value)"></div>
+      <div class="field"><label>Fecha canje</label><input type="date" value="${esc(mi.canje||'')}" oninput="peUpd(${i},'canje',this.value)"></div>`;
+  } else {
+    extra=`<div class="field"><label>Fecha ${mi.tipo==='web_pay'?'operación':'transferencia'}</label><input type="date" value="${esc(mi.fecha||todayISO())}" oninput="peUpd(${i},'fecha',this.value)"></div>
+      <div class="field"><label>Referencia (opcional)</label><input value="${esc(mi.ref||'')}" placeholder="N° operación" oninput="peUpd(${i},'ref',this.value)"></div>`;
+  }
+  return `<div class="medio-line"><div class="medio-head">
+      <div class="field" style="min-width:150px;margin:0"><label>Medio</label>
+        <select onchange="peSetTipo(${i},this.value)">
+          <option value="transferencia" ${sel('transferencia')}>Transferencia</option>
+          <option value="web_pay" ${sel('web_pay')}>Web Pay</option>
+          <option value="cheque" ${sel('cheque')}>Cheque</option></select></div>
+      <div class="field" style="min-width:140px;margin:0"><label>Monto</label><input inputmode="numeric" value="${mi.monto||''}" oninput="peUpd(${i},'monto',this.value)"></div>
+      ${pedit.medios.length>1?`<button class="btn sm danger" style="align-self:end;margin-bottom:1px" onclick="peRm(${i})">✕</button>`:''}
+    </div><div class="medio-extra">${extra}</div></div>`;
+}
+function renderEditMedios(){
+  const host=document.getElementById('modalHost');
+  const asign=peSum(), tgt=pedit.target, ok=Math.abs(asign-tgt)<=1;
+  host.innerHTML=`<div class="card pad" style="margin-top:16px;border:2px solid var(--teal)">
+    <div class="card-title">✏️ Editar medios del pago</div>
+    <div class="preview-note">El total de los medios debe igualar el monto del pago (<b>${CLP(tgt)}</b>). Para cambiar el monto pagado, anula el pago y regístralo de nuevo.</div>
+    <div>${pedit.medios.map(peditRowHTML).join('')}</div>
+    <button class="btn sm ghost" onclick="peAdd()">+ Agregar medio</button>
+    <div class="totbar" style="margin-top:12px"><span>Total medios</span><b id="peTot" style="${ok?'':'color:var(--red)'}">${CLP(asign)} / ${CLP(tgt)}</b></div>
+    <div id="peNote">${ok?'':`<div class="preview-note mismatch">⚠ El total debe igualar ${CLP(tgt)}.</div>`}</div>
+    <div class="field" style="margin-top:8px"><label>Observación</label><input value="${esc(pedit.obs)}" oninput="pedit.obs=this.value"></div>
+    <div style="display:flex;gap:10px;margin-top:10px">
+      <button class="btn primary" onclick="saveEditMedios(this)">Guardar cambios</button>
+      <button class="btn ghost" onclick="closePedit()">Cancelar</button>
+    </div>
+  </div>`;
+  host.scrollIntoView({behavior:'smooth',block:'center'});
+}
+async function saveEditMedios(btn){
+  const tgt=pedit.target, pagoId=pedit.pagoId;
+  const lineas=pedit.medios.filter(m=>parseMoney(m.monto)>0 || (m.tipo==='cheque'&&(m.folio||'').trim()));
+  if(!lineas.length){ toast('Agrega al menos un medio','err'); return; }
+  for(const m of lineas){
+    if(parseMoney(m.monto)<=0){ toast('Cada medio necesita monto','err'); return; }
+    if(m.tipo==='cheque'){ if(!(m.folio||'').trim()){ toast('Cada cheque necesita folio','err'); return; }
+      if(!m.canje){ toast('Cada cheque necesita fecha de canje','err'); return; } }
+  }
+  if(Math.abs(peSum()-tgt)>1){ toast('El total de los medios debe igualar '+CLP(tgt),'err'); return; }
+  const prevCheques=state.cheques.filter(c=>c.pago_id===pagoId);
+  const tipos=[...new Set(lineas.map(m=>m.tipo))];
+  const medioResumen=tipos.length===1?tipos[0]:'mixto';
+  const fop=lineas.filter(m=>m.tipo!=='cheque'&&m.fecha).map(m=>m.fecha).sort()[0];
+  btn.disabled=true; btn.innerHTML='<span class="spin"></span> Guardando…';
+  try{
+    await api('/pago_medios?pago_id=eq.'+pagoId,{method:'DELETE',headers:{Prefer:'return=minimal'}});
+    await api('/cheques?pago_id=eq.'+pagoId,{method:'DELETE',headers:{Prefer:'return=minimal'}});
+    const medRec=lineas.filter(m=>m.tipo!=='cheque').map(m=>({pago_id:pagoId,medio:m.tipo,monto:parseMoney(m.monto),fecha_op:m.fecha||null,referencia:(m.ref||'').trim()||null}));
+    if(medRec.length) await api('/pago_medios',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify(medRec)});
+    const chqRec=lineas.filter(m=>m.tipo==='cheque').map(m=>{
+      const prev=prevCheques.find(c=>String(c.folio_cheque)===String(m.folio).trim()&&c.estado==='canjeado');
+      return {pago_id:pagoId,folio_cheque:m.folio.trim(),banco:(m.banco||'').trim()||null,monto:parseMoney(m.monto),fecha_canje:m.canje||null,
+        estado:prev?'canjeado':'pendiente',fecha_canjeado:prev?prev.fecha_canjeado:null};
+    });
+    if(chqRec.length) await api('/cheques',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify(chqRec)});
+    const patch={medio_pago:medioResumen, observacion:pedit.obs.trim()||null}; if(fop) patch.fecha_pago=fop;
+    await api('/pagos?id=eq.'+pagoId,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify(patch)});
+    toast('Medios actualizados','ok'); closePedit(); await loadAll();
+  }catch(e){ btn.disabled=false; btn.textContent='Guardar cambios'; toast('Error: '+e.message,'err'); }
+}
+async function anularPago(pagoId){
+  const p=state.pagos.find(x=>x.id===pagoId); if(!p) return;
+  const allocs=state.alloc.filter(a=>a.pago_id===pagoId);
+  const cheques=state.cheques.filter(c=>c.pago_id===pagoId);
+  const hayCanj=cheques.some(c=>c.estado==='canjeado');
+  let msg=`¿Anular el pago de ${CLP(p.monto_total)} a ${p.nombre||p.rut||'proveedor'}?\n\nSe eliminarán sus cheques y medios, y las facturas volverán a quedar pendientes por el monto aplicado.`;
+  if(hayCanj) msg+=`\n\n⚠ ATENCIÓN: este pago tiene cheques ya CANJEADOS. Asegúrate de que corresponde anularlo.`;
+  if(!confirm(msg)) return;
+  try{
+    await api('/pagos?id=eq.'+pagoId,{method:'DELETE',headers:{Prefer:'return=minimal'}});
+    const affected=[...new Set(allocs.map(a=>a.factura_id))];
+    for(const fid of affected){
+      const rem=await api('/pagos_facturas?select=monto_aplicado&factura_id=eq.'+fid);
+      const pagado=(rem||[]).reduce((s,a)=>s+(+a.monto_aplicado||0),0);
+      const f=state.facturas.find(x=>x.id===fid); if(!f) continue;
+      const est = pagado<=0.0001?'pendiente':(pagado>=(+f.monto_total)-0.0001?'pagada':'pagada_parcial');
+      await api('/facturas?id=eq.'+fid,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({estado:est})});
+    }
+    toast('Pago anulado','ok'); await loadAll();
+  }catch(e){ toast('Error al anular: '+e.message,'err'); }
 }
 
 /* =================== DASHBOARD =================== */
