@@ -295,6 +295,7 @@
       <span id="mobTitle">Dashboard</span>
     </div>
     <main id="main"></main>
+    <div id="modalHost"></div>
   </div>
 </div>
 
@@ -570,6 +571,7 @@ async function loadUsuarios(){ try{ state.usuarios=await api('/usuarios?select=*
 /* =================== RENDER ROUTER =================== */
 function render(){
   const m=document.getElementById('main');
+  const mh=document.getElementById('modalHost'); if(mh) mh.innerHTML='';
   if(state.activeMod==='facturas') m.innerHTML=viewFacturas();
   else if(state.activeMod==='pagos') renderPagos();
   else if(state.activeMod==='historial') m.innerHTML=viewHistorial();
@@ -579,7 +581,14 @@ function render(){
 }
 
 /* =================== FACTURAS =================== */
-let facFilter={estado:'',q:'',imp:''};
+let facFilter={estado:'',q:'',imp:'',impDesde:'',impHasta:''};
+function localDateOf(iso){ if(!iso) return ''; const d=new Date(iso); if(isNaN(d)) return String(iso).slice(0,10);
+  return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); }
+function ymOffset(n){ const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()+n);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
+function localDateMinus(days){ const d=new Date(); d.setDate(d.getDate()-days);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function dISO(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 let facSel=new Set();
 function canCargar(){ return state.role==='registrador'||state.role==='supervisor'; }
 function canDeleteFac(f){ return canCargar() && !(state.saldo[f.id]>0.0001); }
@@ -604,8 +613,16 @@ function facFiltered(){
     if(facFilter.estado==='pendientes' && saldoOf(f)<=0.0001) return false;
     if(facFilter.estado==='pagadas' && saldoOf(f)>0.0001) return false;
     if(facFilter.estado==='vencidas' && !isVencida(f)) return false;
-    if(facFilter.imp){ const cut=new Date(Date.now()-(+facFilter.imp)*86400000).toISOString();
-      if(!(f.created_at && f.created_at>=cut)) return false; }
+    if(facFilter.imp){
+      const ca=localDateOf(f.created_at); if(!ca) return false;
+      if(facFilter.imp==='7'||facFilter.imp==='15'){ if(ca<localDateMinus(+facFilter.imp)) return false; }
+      else if(facFilter.imp==='mes'){ if(ca.slice(0,7)!==ymOffset(0)) return false; }
+      else if(facFilter.imp==='mesant'){ if(ca.slice(0,7)!==ymOffset(-1)) return false; }
+      else if(facFilter.imp==='custom'){
+        if(facFilter.impDesde && ca<facFilter.impDesde) return false;
+        if(facFilter.impHasta && ca>facFilter.impHasta) return false;
+      }
+    }
     if(facFilter.q){ const q=facFilter.q.toLowerCase();
       if(!((provNombre(f)).toLowerCase().includes(q)||(f.rut||'').toLowerCase().includes(q)||(f.folio||'').toLowerCase().includes(q))) return false; }
     return true;
@@ -638,7 +655,13 @@ function viewFacturas(){
       <div class="field"><label>Importación</label><select onchange="facFilter.imp=this.value;render()">
         <option value="" ${facFilter.imp===''?'selected':''}>Todas</option>
         <option value="7" ${facFilter.imp==='7'?'selected':''}>Última semana</option>
-        <option value="15" ${facFilter.imp==='15'?'selected':''}>Últimos 15 días</option></select></div>
+        <option value="15" ${facFilter.imp==='15'?'selected':''}>Últimos 15 días</option>
+        <option value="mes" ${facFilter.imp==='mes'?'selected':''}>Último mes</option>
+        <option value="mesant" ${facFilter.imp==='mesant'?'selected':''}>Mes anterior</option>
+        <option value="custom" ${facFilter.imp==='custom'?'selected':''}>Personalizado…</option></select></div>
+      ${facFilter.imp==='custom'?`
+      <div class="field"><label>Desde (importación)</label><input type="date" value="${facFilter.impDesde}" onchange="facFilter.impDesde=this.value;render()"></div>
+      <div class="field"><label>Hasta (importación)</label><input type="date" value="${facFilter.impHasta}" onchange="facFilter.impHasta=this.value;render()"></div>`:''}
     </div>
     <div class="table-wrap"><table>
       <thead><tr>
@@ -646,8 +669,7 @@ function viewFacturas(){
         <th>Folio</th><th>Proveedor</th><th>Emisión</th><th>Vence</th><th class="r">Total</th><th class="r">Saldo</th><th>Estado</th></tr></thead>
       <tbody id="facBody">${facBodyHTML()}</tbody>
     </table></div>
-  </div>
-  <div id="modalHost"></div>`;
+  </div>`;
 }
 function facBodyHTML(){
   const list=facFiltered();
@@ -912,11 +934,16 @@ function setPayVentana(v){ payVentana=v; provQuery=''; pay.rut=null; pay.items={
 function renderPagos(){
   const m=document.getElementById('main');
   const provs=proveedoresConSaldo();
+  const k=payMiniKPIs();
   const emptyMsg = payEstado==='vencidas' ? 'No hay facturas vencidas'
     : payEstado==='porvencer' ? 'No hay facturas por vencer' : 'No hay facturas pendientes';
   const ventanaLabel = payEstado==='vencidas' ? 'Vencidas en' : 'Vencen en';
   m.innerHTML=`
   <div class="page-head"><h2>Registrar pago</h2></div>
+  <div class="kpis" style="grid-template-columns:repeat(2,1fr)">
+    <div class="kpi"><div class="strip s-red"></div><div class="lab">Vencidas última semana</div><div class="val">${k.vc}</div><div class="meta">${CLP(k.vv)} por pagar</div></div>
+    <div class="kpi"><div class="strip s-amber"></div><div class="lab">Por vencer próxima semana</div><div class="val">${k.pc}</div><div class="meta">${CLP(k.pv)} por pagar</div></div>
+  </div>
   <div class="card pad">
     <div class="card-title">1 · Proveedor</div>
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">
@@ -946,14 +973,21 @@ function renderPagos(){
 let provQuery=''; let provFilteredCache=[];
 function provSearchHTML(provs){
   return `<div class="field" style="max-width:460px">
-    <label>Buscar proveedor por nombre o RUT</label>
-    <input id="provSearch" autocomplete="off" placeholder="Escribe el nombre del proveedor…" value="${esc(provQuery)}" oninput="provQuery=this.value;renderProvList()">
+    <label>Buscar proveedor por nombre, RUT o folio</label>
+    <input id="provSearch" autocomplete="off" placeholder="Nombre, RUT o N° de folio…" value="${esc(provQuery)}" oninput="provQuery=this.value;renderProvList()">
     <div id="provList" class="prov-list">${provListHTML(provs)}</div>
   </div>`;
 }
 function provListHTML(provs){
   const q=provQuery.trim().toLowerCase();
-  let list = q ? provs.filter(p=>((p.nombre||'').toLowerCase().includes(q)||(p.rut||'').toLowerCase().includes(q))) : provs;
+  let list=provs;
+  if(q){
+    const folioKeys=new Set();
+    state.facturas.forEach(f=>{ if(!payFacMatch(f)) return;
+      if((f.folio||'').toLowerCase().includes(q)) folioKeys.add(f.rut||('sinrut|'+provNombre(f))); });
+    list=provs.filter(p=>{ const key=p.rut||('sinrut|'+p.nombre);
+      return (p.nombre||'').toLowerCase().includes(q)||(p.rut||'').toLowerCase().includes(q)||folioKeys.has(key); });
+  }
   provFilteredCache=list.slice(0,40);
   if(!provFilteredCache.length) return '<div class="prov-empty">Sin coincidencias</div>';
   return provFilteredCache.map((p,i)=>`<button class="prov-item" onclick="pickProv(${i})">
@@ -986,6 +1020,16 @@ function proveedoresConSaldo(){
     if(!isNC(f)) map[key].fac+=saldoOf(f);
   });
   return Object.values(map).filter(p=>p.fac>0.0001).sort((a,b)=>b.saldo-a.saldo);
+}
+function payMiniKPIs(){
+  const hoy=localDateMinus(0), haceSem=localDateMinus(7), proxSem=localDateMinus(-7);
+  let vc=0,vv=0,pc=0,pv=0;
+  state.facturas.forEach(f=>{ if(isNC(f)) return; const s=saldoOf(f); if(s<=0.0001) return;
+    const venc=(f.fecha_vencimiento||'').slice(0,10); if(!venc) return;
+    if(venc>=haceSem && venc<hoy){ vc++; vv+=s; }
+    else if(venc>=hoy && venc<=proxSem){ pc++; pv+=s; }
+  });
+  return {vc,vv,pc,pv};
 }
 function selectProv(key){ pay.rut=key||null; pay.items={}; pay.medios=freshMedios(); renderPagos(); }
 function provFacturas(){
@@ -1180,6 +1224,9 @@ function viewCheques(){
   let list=state.cheques.filter(c=> chkFilter==='todos'?true:c.estado===chkFilter);
   const pend=state.cheques.filter(c=>c.estado==='pendiente');
   const totPend=pend.reduce((s,c)=>s+(+c.monto||0),0);
+  const hoy=localDateMinus(0);
+  const venceHoyAntes=pend.filter(c=>c.fecha_canje && (c.fecha_canje.slice(0,10)<=hoy));
+  const montoHoyAntes=venceHoyAntes.reduce((s,c)=>s+(+c.monto||0),0);
   const rows=list.length?list.map(c=>{
     const prov=c.pagos||{}; const venceHoy=c.estado==='pendiente'&&c.fecha_canje&&c.fecha_canje<=todayISO();
     return `<tr>
@@ -1195,7 +1242,7 @@ function viewCheques(){
   <div class="page-head"><h2>Cheques</h2></div>
   <div class="kpis" style="grid-template-columns:repeat(3,1fr)">
     <div class="kpi"><div class="strip s-amber"></div><div class="lab">Por canjear</div><div class="val">${CLP(totPend)}</div><div class="meta">${pend.length} cheques pendientes</div></div>
-    <div class="kpi"><div class="strip s-red"></div><div class="lab">Vencen hoy o antes</div><div class="val">${pend.filter(c=>c.fecha_canje&&c.fecha_canje<=todayISO()).length}</div><div class="meta">requieren fondos ya</div></div>
+    <div class="kpi"><div class="strip s-red"></div><div class="lab">Flujo necesario en caja</div><div class="val">${CLP(montoHoyAntes)}</div><div class="meta">${venceHoyAntes.length} cheques vencen hoy o antes</div></div>
     <div class="kpi"><div class="strip s-green"></div><div class="lab">Canjeados</div><div class="val">${state.cheques.filter(c=>c.estado==='canjeado').length}</div><div class="meta">total histórico</div></div>
   </div>
   <div class="card pad">
@@ -1219,12 +1266,21 @@ async function canjear(id,btn){
 /* =================== PAGOS REALIZADOS (HISTORIAL) =================== */
 const MEDIO_LAB = { transferencia:'Transferencia', web_pay:'Web Pay', cheque:'Cheque', mixto:'Mixto', ajuste:'Ajuste' };
 let histQuery='';
+let histVentana='';
+function mondayThisWeek(){ const d=new Date(); const dow=(d.getDay()+6)%7; d.setDate(d.getDate()-dow);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 function canEditarPago(){ return state.role==='tesoreria'||state.role==='supervisor'; }
 function viewHistorial(){
   return `
   <div class="page-head"><h2>Pagos realizados</h2></div>
   <div class="card pad" style="margin-bottom:12px">
-    <div class="field"><label>Buscar proveedor o RUT</label><input placeholder="Escribe para filtrar…" value="${esc(histQuery)}" oninput="histQuery=this.value;rerenderHist()"></div>
+    <div class="filters">
+      <div class="field"><label>Buscar proveedor o RUT</label><input placeholder="Escribe para filtrar…" value="${esc(histQuery)}" oninput="histQuery=this.value;rerenderHist()"></div>
+      <div class="field"><label>Visualización</label><select onchange="histVentana=this.value;rerenderHist()">
+        <option value="" ${histVentana===''?'selected':''}>Todos</option>
+        <option value="semana" ${histVentana==='semana'?'selected':''}>Semana actual</option>
+        <option value="15" ${histVentana==='15'?'selected':''}>Últimos 15 días</option></select></div>
+    </div>
   </div>
   <div id="histList">${histListHTML()}</div>`;
 }
@@ -1232,7 +1288,9 @@ function histListHTML(){
   const q=normKey(histQuery);
   let pagos=[...state.pagos].sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')));
   if(q) pagos=pagos.filter(p=>normKey((p.nombre||'')+' '+(p.rut||'')).includes(q));
-  if(!pagos.length) return `<div class="card pad"><div class="empty"><div class="ico">🧾</div><div class="t">Sin pagos registrados</div></div></div>`;
+  if(histVentana==='semana'){ const lun=mondayThisWeek(); pagos=pagos.filter(p=>(p.fecha_pago||'').slice(0,10)>=lun); }
+  else if(histVentana==='15'){ const c=localDateMinus(15); pagos=pagos.filter(p=>(p.fecha_pago||'').slice(0,10)>=c); }
+  if(!pagos.length) return `<div class="card pad"><div class="empty"><div class="ico">🧾</div><div class="t">Sin pagos en este período</div></div></div>`;
   return pagos.map(pagoCardHTML).join('');
 }
 function rerenderHist(){ const c=document.getElementById('histList'); if(c) c.innerHTML=histListHTML(); }
@@ -1405,6 +1463,26 @@ function viewDashboard(){
       <td>${esc((c.pagos||{}).nombre||'—')}</td><td class="r money">${CLP(c.monto)}</td></tr>`).join('')
     : '<tr><td colspan="4"><div class="empty" style="padding:20px">Sin cheques con fecha</div></td></tr>';
 
+  // Flujo NO-cheque: saldo de facturas pendientes por vencimiento (semana / mes / próximo mes)
+  const finSemana=(()=>{ const d=new Date(); const dow=(d.getDay()+6)%7; d.setDate(d.getDate()+(6-dow)); return dISO(d); })();
+  const finMes=(()=>{ const d=new Date(); d.setMonth(d.getMonth()+1,0); return dISO(d); })();
+  const ymProx=ymOffset(1);
+  const nb={sem:0,semN:0,mes:0,mesN:0,prox:0,proxN:0,sinFecha:0};
+  state.facturas.forEach(f=>{ if(isNC(f)) return; const s=saldoOf(f); if(s<=0.0001) return;
+    const v=(f.fecha_vencimiento||'').slice(0,10);
+    if(!v){ nb.sinFecha+=s; return; }
+    if(v<=finSemana){ nb.sem+=s; nb.semN++; }
+    else if(v<=finMes){ nb.mes+=s; nb.mesN++; }
+    else if(v.slice(0,7)===ymProx){ nb.prox+=s; nb.proxN++; }
+  });
+  const maxNB=Math.max(1,nb.sem,nb.mes,nb.prox);
+  const ncRow=(lab,val,n)=>`<div class="flow-row"><div class="flow-date">${lab}${n?` <span style="color:var(--muted);font-weight:400">(${n})</span>`:''}</div>
+      <div class="flow-bar-track"><div class="flow-bar" style="width:${(val/maxNB*100).toFixed(1)}%;background:var(--teal)"></div></div>
+      <div class="flow-amt">${CLP(val)}</div></div>`;
+  const noChequeRows=(nb.sem+nb.mes+nb.prox)>0
+    ? ncRow('Esta semana / vencidas',nb.sem,nb.semN)+ncRow('Resto del mes',nb.mes,nb.mesN)+ncRow('Próximo mes',nb.prox,nb.proxN)
+    : '<div class="empty"><div class="ico">💸</div><div class="t">Sin facturas pendientes con vencimiento</div></div>';
+
   return `
   <div class="page-head"><h2>Dashboard</h2></div>
   <div class="kpis">
@@ -1417,6 +1495,11 @@ function viewDashboard(){
     <div class="card-title">🌊 Flujo de caja proyectado · salidas por cheques</div>
     <div class="preview-note">Monto de cheques pendientes agrupado por mes de canje. Al marcar un cheque como canjeado, sale de esta proyección.</div>
     ${flowRows}
+  </div>
+  <div class="card pad">
+    <div class="card-title">💸 Flujo de caja proyectado · facturas por otros medios (no cheque)</div>
+    <div class="preview-note">Saldo de facturas pendientes a pagar por transferencia u otro medio (no cheque), agrupado por vencimiento. Complementa el flujo de cheques.${nb.sinFecha>0?` · ${CLP(nb.sinFecha)} sin fecha de vencimiento.`:''}</div>
+    ${noChequeRows}
   </div>
   <div class="card pad">
     <div class="card-title">📅 Próximos cheques a canjear</div>
