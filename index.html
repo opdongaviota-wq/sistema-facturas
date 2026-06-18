@@ -237,6 +237,9 @@
 
   .preview-note{font-size:12.5px;color:var(--muted);margin:6px 0 12px}
   .preview-note.abono{color:#7a4a0c;background:#fbeedd;padding:9px 12px;border-radius:8px;line-height:1.45}
+  .rep-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+  .rep-tab{padding:9px 16px;border:1px solid var(--border);background:#fff;border-radius:9px;font-weight:600;color:var(--muted);cursor:pointer;font-size:13.5px}
+  .rep-tab.on{background:var(--navy);color:#fff;border-color:var(--navy)}
   .ph-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}
   @media(max-width:620px){.ph-grid{grid-template-columns:1fr;gap:12px}}
   .ph-h{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:700;margin-bottom:6px}
@@ -309,13 +312,13 @@ const REST = SUPABASE_URL + '/rest/v1';
 
 const MODULES_BY_ROLE = {
   registrador:['facturas'],
-  tesoreria:['dashboard','pagos','historial','cheques'],
-  supervisor:['dashboard','facturas','pagos','historial','cheques','ajustes'],
+  tesoreria:['dashboard','pagos','historial','cheques','reportes'],
+  supervisor:['dashboard','facturas','pagos','historial','cheques','reportes','ajustes'],
 };
-const MOD_LABELS = { dashboard:'Dashboard', facturas:'Facturas', pagos:'Registrar pago', historial:'Pagos realizados', cheques:'Cheques', ajustes:'Ajustes' };
+const MOD_LABELS = { dashboard:'Dashboard', facturas:'Facturas', pagos:'Registrar pago', historial:'Pagos realizados', cheques:'Cheques', reportes:'Reportes', ajustes:'Ajustes' };
 const ROLE_LABELS = { registrador:'Registrador', tesoreria:'Tesorería', supervisor:'Supervisor' };
 const ROLE_DESC = { registrador:'Carga y consulta de facturas', tesoreria:'Pagos, cheques y caja', supervisor:'Acceso completo + ajustes' };
-const ALL_MODULES = ['dashboard','facturas','pagos','historial','cheques','ajustes'];
+const ALL_MODULES = ['dashboard','facturas','pagos','historial','cheques','reportes','ajustes'];
 
 const SVG = p => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
 const ICONS = {
@@ -324,6 +327,7 @@ const ICONS = {
   pagos:SVG('<rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/>'),
   historial:SVG('<circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 2"/>'),
   cheques:SVG('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 13l2.3 2.3L15 10"/>'),
+  reportes:SVG('<path d="M4 4v16h16"/><rect x="7" y="11" width="3" height="6"/><rect x="12" y="7" width="3" height="10"/><rect x="17" y="13" width="3" height="4"/>'),
   ajustes:SVG('<line x1="4" y1="7" x2="20" y2="7"/><circle cx="9" cy="7" r="2.4"/><line x1="4" y1="17" x2="20" y2="17"/><circle cx="15" cy="17" r="2.4"/>'),
 };
 const ROLE_ICONS = {
@@ -576,6 +580,7 @@ function render(){
   else if(state.activeMod==='pagos') renderPagos();
   else if(state.activeMod==='historial') m.innerHTML=viewHistorial();
   else if(state.activeMod==='cheques') m.innerHTML=viewCheques();
+  else if(state.activeMod==='reportes') m.innerHTML=viewReportes();
   else if(state.activeMod==='dashboard') m.innerHTML=viewDashboard();
   else if(state.activeMod==='ajustes') m.innerHTML=viewAjustes();
 }
@@ -1507,6 +1512,206 @@ function viewDashboard(){
       <thead><tr><th>Fecha canje</th><th>Folio</th><th>Proveedor</th><th class="r">Monto</th></tr></thead>
       <tbody>${proxRows}</tbody></table></div>
   </div>`;
+}
+
+/* =================== REPORTES =================== */
+let repTab=1;
+let rep1Periodo='semanal';
+let rep2Q='', rep2Estado='', rep2Tiempo='';
+let rep3Sel=[], rep3Sem='actual';
+
+function weekRange(offsetWeeks){ const d=new Date(); const dow=(d.getDay()+6)%7; d.setDate(d.getDate()-dow+offsetWeeks*7);
+  const lun=dISO(d); const dd=new Date(d); dd.setDate(dd.getDate()+6); return {desde:lun,hasta:dISO(dd)}; }
+function quincenaRange(){ const d=new Date(),y=d.getFullYear(),m=d.getMonth();
+  return d.getDate()<=15 ? {desde:dISO(new Date(y,m,1)),hasta:dISO(new Date(y,m,15))} : {desde:dISO(new Date(y,m,16)),hasta:dISO(new Date(y,m+1,0))}; }
+function mesRange(){ const d=new Date(),y=d.getFullYear(),m=d.getMonth(); return {desde:dISO(new Date(y,m,1)),hasta:dISO(new Date(y,m+1,0))}; }
+function rangoLabel(r){ return `${fmtDate(r.desde)} — ${fmtDate(r.hasta)}`; }
+function medioDeFactura(f){
+  const allocs=state.alloc.filter(a=>a.factura_id===f.id);
+  if(!allocs.length) return saldoOf(f)>0.0001?'Pendiente':'—';
+  const set=new Set(); allocs.forEach(a=>{ const p=state.pagos.find(x=>x.id===a.pago_id); if(p&&p.medio_pago) set.add(MEDIO_LAB[p.medio_pago]||p.medio_pago); });
+  if(!set.size) return 'Pendiente';
+  return [...set].join(', ')+(saldoOf(f)>0.0001?' (parcial)':'');
+}
+function exportExcel(filename, sheetName, aoa){
+  try{ if(typeof XLSX==='undefined'){ toast('No se pudo cargar el exportador (revisa tu conexión)','err'); return; }
+    const ws=XLSX.utils.aoa_to_sheet(aoa); const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, sheetName.slice(0,31)); XLSX.writeFile(wb, filename);
+    toast('Excel generado','ok');
+  }catch(e){ toast('Error al exportar: '+e.message,'err'); }
+}
+
+function viewReportes(){
+  return `<div class="page-head"><h2>Reportes</h2></div>
+  <div class="rep-tabs">
+    <button class="rep-tab ${repTab===1?'on':''}" onclick="repTab=1;render()">Flujo por proveedor</button>
+    <button class="rep-tab ${repTab===2?'on':''}" onclick="repTab=2;render()">Detalle de facturas</button>
+    <button class="rep-tab ${repTab===3?'on':''}" onclick="repTab=3;render()">Vencimiento ejecutivo</button>
+  </div>
+  <div id="repBody">${repBodyHTML()}</div>`;
+}
+function repBodyHTML(){ return repTab===1?rep1HTML():repTab===2?rep2HTML():rep3HTML(); }
+function repResultRender(){ const c=document.getElementById('repResult'); if(c) c.innerHTML=(repTab===1?rep1TableHTML():repTab===2?rep2TableHTML():rep3TableHTML()); }
+
+/* --- Reporte 1: Flujo por proveedor (por fecha de emisión) --- */
+function rep1Range(){ return rep1Periodo==='quincenal'?quincenaRange():rep1Periodo==='mensual'?mesRange():weekRange(0); }
+function rep1Data(){
+  const {desde,hasta}=rep1Range(); const map={};
+  state.facturas.forEach(f=>{ const em=(f.fecha_emision||'').slice(0,10); if(!em||em<desde||em>hasta) return;
+    const key=f.rut||('sinrut|'+provNombre(f));
+    if(!map[key]) map[key]={rut:f.rut||'',nombre:provNombre(f),nFac:0,facturado:0,nc:0,pagado:0,saldo:0};
+    if(!map[key].nombre) map[key].nombre=provNombre(f);
+    if(isNC(f)){ map[key].nc+=(+f.monto_total||0); }
+    else { const tot=+f.monto_total||0, sal=saldoOf(f); map[key].nFac++; map[key].facturado+=tot; map[key].saldo+=sal; map[key].pagado+=(tot-sal); }
+  });
+  return Object.values(map).sort((a,b)=>b.facturado-a.facturado);
+}
+function rep1HTML(){
+  return `<div class="card pad">
+    <div class="filters">
+      <div class="field"><label>Período (por emisión)</label><select onchange="rep1Periodo=this.value;repResultRender()">
+        <option value="semanal" ${rep1Periodo==='semanal'?'selected':''}>Semanal (semana actual)</option>
+        <option value="quincenal" ${rep1Periodo==='quincenal'?'selected':''}>Quincenal (quincena actual)</option>
+        <option value="mensual" ${rep1Periodo==='mensual'?'selected':''}>Mensual (mes actual)</option></select></div>
+      <div class="spacer"></div>
+      <div class="field" style="align-self:flex-end"><button class="btn navy" onclick="rep1Export()">⊕ Exportar a Excel</button></div>
+    </div>
+    <div id="repResult">${rep1TableHTML()}</div>
+  </div>`;
+}
+function rep1TableHTML(){
+  const data=rep1Data(); const r=rep1Range();
+  const tot=data.reduce((t,p)=>({nFac:t.nFac+p.nFac,facturado:t.facturado+p.facturado,nc:t.nc+p.nc,pagado:t.pagado+p.pagado,saldo:t.saldo+p.saldo}),{nFac:0,facturado:0,nc:0,pagado:0,saldo:0});
+  if(!data.length) return `<div class="preview-note">Período: <b>${rangoLabel(r)}</b></div><div class="empty"><div class="ico">📊</div><div class="t">Sin facturas emitidas en el período</div></div>`;
+  return `<div class="preview-note">Período: <b>${rangoLabel(r)}</b> · ${data.length} proveedores</div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Proveedor</th><th>RUT</th><th class="r">N° Fac</th><th class="r">Facturado</th><th class="r">N. Crédito</th><th class="r">Pagado</th><th class="r">Saldo</th></tr></thead>
+    <tbody>${data.map(p=>`<tr><td>${esc(p.nombre||'—')}</td><td>${esc(p.rut||'—')}</td><td class="r">${p.nFac}</td>
+      <td class="r money">${CLP(p.facturado)}</td><td class="r money" style="color:var(--teal)">${p.nc?'-'+CLP(p.nc):'—'}</td>
+      <td class="r money">${CLP(p.pagado)}</td><td class="r money" style="${p.saldo>0?'color:var(--amber)':''}">${CLP(p.saldo)}</td></tr>`).join('')}
+      <tr style="font-weight:700;border-top:2px solid var(--border)"><td>TOTAL</td><td></td><td class="r">${tot.nFac}</td>
+        <td class="r money">${CLP(tot.facturado)}</td><td class="r money">${tot.nc?'-'+CLP(tot.nc):'—'}</td><td class="r money">${CLP(tot.pagado)}</td><td class="r money">${CLP(tot.saldo)}</td></tr>
+    </tbody></table></div>`;
+}
+function rep1Export(){
+  const data=rep1Data(), r=rep1Range();
+  const aoa=[['Resumen Flujo por Proveedor'],[`Período por emisión: ${fmtDate(r.desde)} a ${fmtDate(r.hasta)} (${rep1Periodo})`],[],
+    ['Proveedor','RUT','N° Facturas','Facturado','Notas de Crédito','Pagado','Saldo']];
+  data.forEach(p=>aoa.push([p.nombre||'',p.rut||'',p.nFac,Math.round(p.facturado),Math.round(p.nc),Math.round(p.pagado),Math.round(p.saldo)]));
+  const tot=data.reduce((t,p)=>({n:t.n+p.nFac,f:t.f+p.facturado,c:t.c+p.nc,pg:t.pg+p.pagado,s:t.s+p.saldo}),{n:0,f:0,c:0,pg:0,s:0});
+  aoa.push(['TOTAL','',tot.n,Math.round(tot.f),Math.round(tot.c),Math.round(tot.pg),Math.round(tot.s)]);
+  exportExcel(`flujo_por_proveedor_${r.desde}_${r.hasta}.xlsx`,'Flujo proveedor',aoa);
+}
+
+/* --- Reporte 2: Detalle de facturas por proveedor (tiempo por vencimiento) --- */
+function rep2Data(){
+  const q=(rep2Q||'').toLowerCase();
+  let range=rep2Tiempo==='actual'?weekRange(0):rep2Tiempo==='anterior'?weekRange(-1):null;
+  return state.facturas.filter(f=>{ if(isNC(f)) return false;
+    if(q && !((provNombre(f)).toLowerCase().includes(q)||(f.rut||'').toLowerCase().includes(q)||(f.folio||'').toLowerCase().includes(q))) return false;
+    if(rep2Estado==='vencidas' && !isVencida(f)) return false;
+    if(rep2Estado==='porvencer' && !(saldoOf(f)>0.0001 && !isVencida(f))) return false;
+    if(range){ const v=(f.fecha_vencimiento||'').slice(0,10); if(!v||v<range.desde||v>range.hasta) return false; }
+    return true;
+  }).sort((a,b)=>String(a.fecha_vencimiento||'').localeCompare(String(b.fecha_vencimiento||'')));
+}
+function rep2HTML(){
+  return `<div class="card pad">
+    <div class="filters">
+      <div class="field"><label>Proveedor o RUT</label><input id="rep2q" placeholder="Nombre, RUT o folio…" value="${esc(rep2Q)}" oninput="rep2Q=this.value;repResultRender()"></div>
+      <div class="field"><label>Estado</label><select onchange="rep2Estado=this.value;repResultRender()">
+        <option value="" ${rep2Estado===''?'selected':''}>Todas</option>
+        <option value="vencidas" ${rep2Estado==='vencidas'?'selected':''}>Vencidas</option>
+        <option value="porvencer" ${rep2Estado==='porvencer'?'selected':''}>Por vencer</option></select></div>
+      <div class="field"><label>Tiempo (por vencimiento)</label><select onchange="rep2Tiempo=this.value;repResultRender()">
+        <option value="" ${rep2Tiempo===''?'selected':''}>Cualquiera</option>
+        <option value="actual" ${rep2Tiempo==='actual'?'selected':''}>Semana actual</option>
+        <option value="anterior" ${rep2Tiempo==='anterior'?'selected':''}>Semana anterior</option></select></div>
+      <div class="spacer"></div>
+      <div class="field" style="align-self:flex-end"><button class="btn navy" onclick="rep2Export()">⊕ Exportar a Excel</button></div>
+    </div>
+    <div id="repResult">${rep2TableHTML()}</div>
+  </div>`;
+}
+function rep2EstadoTxt(f){ return isVencida(f)?'Vencida':saldoOf(f)<=0.0001?'Pagada':(state.saldo[f.id]>0?'Parcial':'Pendiente'); }
+function rep2TableHTML(){
+  const data=rep2Data();
+  if(!data.length) return `<div class="empty"><div class="ico">📄</div><div class="t">Sin facturas con esos filtros</div></div>`;
+  const tot=data.reduce((t,f)=>({tot:t.tot+(+f.monto_total||0),sal:t.sal+saldoOf(f)}),{tot:0,sal:0});
+  return `<div class="preview-note">${data.length} facturas</div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Folio</th><th>Proveedor</th><th>RUT</th><th>Emisión</th><th>Vence</th><th class="r">Total</th><th class="r">Saldo</th><th>Estado</th></tr></thead>
+    <tbody>${data.map(f=>`<tr><td><b>${esc(f.folio)}</b></td><td>${esc(provNombre(f)||'—')}</td><td>${esc(f.rut||'—')}</td>
+      <td>${f.fecha_emision?fmtDate(f.fecha_emision):'—'}</td><td>${f.fecha_vencimiento?fmtDate(f.fecha_vencimiento):'—'}</td>
+      <td class="r money">${CLP(f.monto_total)}</td><td class="r money">${CLP(saldoOf(f))}</td><td>${rep2EstadoTxt(f)}</td></tr>`).join('')}
+      <tr style="font-weight:700;border-top:2px solid var(--border)"><td colspan="5">TOTAL</td><td class="r money">${CLP(tot.tot)}</td><td class="r money">${CLP(tot.sal)}</td><td></td></tr>
+    </tbody></table></div>`;
+}
+function rep2Export(){
+  const data=rep2Data();
+  const aoa=[['Detalle de Facturas por Proveedor'],
+    [`Filtros: ${rep2Q?('"'+rep2Q+'" · '):''}${rep2Estado||'todas'}${rep2Tiempo?(' · vence '+(rep2Tiempo==='actual'?'semana actual':'semana anterior')):''}`],[],
+    ['Folio','Tipo','Proveedor','RUT','Emisión','Vencimiento','Total','Saldo','Estado','Medio de pago']];
+  data.forEach(f=>aoa.push([f.folio||'',f.tipo_doc||'',provNombre(f)||'',f.rut||'',f.fecha_emision?fmtDate(f.fecha_emision):'',f.fecha_vencimiento?fmtDate(f.fecha_vencimiento):'',Math.round(+f.monto_total||0),Math.round(saldoOf(f)),rep2EstadoTxt(f),medioDeFactura(f)]));
+  exportExcel(`detalle_facturas.xlsx`,'Detalle facturas',aoa);
+}
+
+/* --- Reporte 3: Vencimiento ejecutivo (semanal, 1+ proveedores, todo medio) --- */
+function rep3Range(){ return weekRange(rep3Sem==='anterior'?-1:rep3Sem==='proxima'?1:0); }
+function rep3Provs(){ const map={};
+  state.facturas.forEach(f=>{ if(isNC(f)) return; const key=f.rut||('sinrut|'+provNombre(f));
+    if(!map[key]) map[key]={key,rut:f.rut||'',nombre:provNombre(f)}; if(!map[key].nombre) map[key].nombre=provNombre(f); });
+  return Object.values(map).sort((a,b)=>String(a.nombre||'').localeCompare(String(b.nombre||'')));
+}
+function rep3Data(){
+  const {desde,hasta}=rep3Range(); const sel=new Set(rep3Sel);
+  return state.facturas.filter(f=>{ if(isNC(f)) return false;
+    const v=(f.fecha_vencimiento||'').slice(0,10); if(!v||v<desde||v>hasta) return false;
+    const key=f.rut||('sinrut|'+provNombre(f)); if(sel.size && !sel.has(key)) return false;
+    return true;
+  }).sort((a,b)=>String(a.fecha_vencimiento||'').localeCompare(String(b.fecha_vencimiento||''))||String(provNombre(a)).localeCompare(String(provNombre(b))));
+}
+function rep3SetSel(el){ rep3Sel=[...el.selectedOptions].map(o=>o.value); repResultRender(); }
+function rep3HTML(){
+  const provs=rep3Provs();
+  return `<div class="card pad">
+    <div class="filters">
+      <div class="field"><label>Semana (por vencimiento)</label><select onchange="rep3Sem=this.value;repResultRender()">
+        <option value="anterior" ${rep3Sem==='anterior'?'selected':''}>Semana anterior</option>
+        <option value="actual" ${rep3Sem==='actual'?'selected':''}>Semana actual</option>
+        <option value="proxima" ${rep3Sem==='proxima'?'selected':''}>Semana próxima</option></select></div>
+      <div class="field"><label>Proveedores (vacío = todos · Ctrl/⌘ para varios)</label>
+        <select multiple size="5" onchange="rep3SetSel(this)" style="min-width:260px;height:auto">
+          ${provs.map(p=>`<option value="${esc(p.key)}" ${rep3Sel.includes(p.key)?'selected':''}>${esc(p.nombre||p.rut||'(sin nombre)')}</option>`).join('')}
+        </select></div>
+      <div class="spacer"></div>
+      <div class="field" style="align-self:flex-end"><button class="btn navy" onclick="rep3Export()">⊕ Exportar a Excel</button></div>
+    </div>
+    <div id="repResult">${rep3TableHTML()}</div>
+  </div>`;
+}
+function rep3TableHTML(){
+  const data=rep3Data(); const r=rep3Range();
+  if(!data.length) return `<div class="preview-note">Semana: <b>${rangoLabel(r)}</b></div><div class="empty"><div class="ico">📅</div><div class="t">Sin vencimientos en la semana</div></div>`;
+  const tot=data.reduce((t,f)=>({tot:t.tot+(+f.monto_total||0),sal:t.sal+saldoOf(f)}),{tot:0,sal:0});
+  return `<div class="preview-note">Semana: <b>${rangoLabel(r)}</b> · ${data.length} facturas${rep3Sel.length?(' · '+rep3Sel.length+' proveedor(es)'):' · todos los proveedores'}</div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Proveedor</th><th>RUT</th><th>Folio</th><th>Vence</th><th class="r">Total</th><th class="r">Saldo</th><th>Estado</th><th>Medio de pago</th></tr></thead>
+    <tbody>${data.map(f=>`<tr><td>${esc(provNombre(f)||'—')}</td><td>${esc(f.rut||'—')}</td><td><b>${esc(f.folio)}</b></td>
+      <td>${fmtDate(f.fecha_vencimiento)}</td><td class="r money">${CLP(f.monto_total)}</td><td class="r money">${CLP(saldoOf(f))}</td>
+      <td>${rep2EstadoTxt(f)}</td><td>${esc(medioDeFactura(f))}</td></tr>`).join('')}
+      <tr style="font-weight:700;border-top:2px solid var(--border)"><td colspan="4">TOTAL</td><td class="r money">${CLP(tot.tot)}</td><td class="r money">${CLP(tot.sal)}</td><td></td><td></td></tr>
+    </tbody></table></div>`;
+}
+function rep3Export(){
+  const data=rep3Data(), r=rep3Range();
+  const aoa=[['Resumen Vencimiento Ejecutivo'],[`Semana (por vencimiento): ${fmtDate(r.desde)} a ${fmtDate(r.hasta)}`],
+    [rep3Sel.length?`${rep3Sel.length} proveedor(es) seleccionados`:'Todos los proveedores'],[],
+    ['Proveedor','RUT','Folio','Vencimiento','Total','Saldo','Estado','Medio de pago']];
+  data.forEach(f=>aoa.push([provNombre(f)||'',f.rut||'',f.folio||'',fmtDate(f.fecha_vencimiento),Math.round(+f.monto_total||0),Math.round(saldoOf(f)),rep2EstadoTxt(f),medioDeFactura(f)]));
+  const tot=data.reduce((t,f)=>({tot:t.tot+(+f.monto_total||0),sal:t.sal+saldoOf(f)}),{tot:0,sal:0});
+  aoa.push(['TOTAL','','','',Math.round(tot.tot),Math.round(tot.sal),'','']);
+  exportExcel(`vencimiento_ejecutivo_${r.desde}_${r.hasta}.xlsx`,'Vencimiento',aoa);
 }
 
 /* =================== AJUSTES · USUARIOS =================== */
