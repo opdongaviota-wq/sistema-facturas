@@ -240,6 +240,12 @@
   .rep-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
   .rep-tab{padding:9px 16px;border:1px solid var(--border);background:#fff;border-radius:9px;font-weight:600;color:var(--muted);cursor:pointer;font-size:13.5px}
   .rep-tab.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+  .prov-checks{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:7px 14px;max-height:210px;overflow:auto;border:1px solid var(--border);border-radius:9px;padding:11px 13px;margin-bottom:14px}
+  .pchk{display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer;color:var(--navy)}
+  .rep-prov{margin-bottom:18px}
+  .rep-prov-h{display:flex;justify-content:space-between;align-items:center;gap:10px;background:#eef2f7;padding:9px 13px;border-radius:9px 9px 0 0;font-size:14px;color:var(--navy)}
+  tr.rep-sec td{background:#fafcfe;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted)}
+  tr.rep-sec.s-red td{color:#b3261e} tr.rep-sec.s-amber td{color:#a6620c} tr.rep-sec.s-teal td{color:var(--teal)}
   .ph-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}
   @media(max-width:620px){.ph-grid{grid-template-columns:1fr;gap:12px}}
   .ph-h{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:700;margin-bottom:6px}
@@ -1518,7 +1524,7 @@ function viewDashboard(){
 let repTab=1;
 let rep1Periodo='semanal';
 let rep2Q='', rep2Estado='', rep2Tiempo='';
-let rep3Sel=[], rep3Sem='actual';
+let rep3Sel=[];
 
 function weekRange(offsetWeeks){ const d=new Date(); const dow=(d.getDay()+6)%7; d.setDate(d.getDate()-dow+offsetWeeks*7);
   const lun=dISO(d); const dd=new Date(d); dd.setDate(dd.getDate()+6); return {desde:lun,hasta:dISO(dd)}; }
@@ -1546,7 +1552,7 @@ function viewReportes(){
   <div class="rep-tabs">
     <button class="rep-tab ${repTab===1?'on':''}" onclick="repTab=1;render()">Flujo por proveedor</button>
     <button class="rep-tab ${repTab===2?'on':''}" onclick="repTab=2;render()">Detalle de facturas</button>
-    <button class="rep-tab ${repTab===3?'on':''}" onclick="repTab=3;render()">Vencimiento ejecutivo</button>
+    <button class="rep-tab ${repTab===3?'on':''}" onclick="repTab=3;render()">Resumen de vencimientos</button>
   </div>
   <div id="repBody">${repBodyHTML()}</div>`;
 }
@@ -1656,62 +1662,108 @@ function rep2Export(){
   exportExcel(`detalle_facturas.xlsx`,'Detalle facturas',aoa);
 }
 
-/* --- Reporte 3: Vencimiento ejecutivo (semanal, 1+ proveedores, todo medio) --- */
-function rep3Range(){ return weekRange(rep3Sem==='anterior'?-1:rep3Sem==='proxima'?1:0); }
+/* --- Reporte 3: Resumen de vencimientos (vencidas + esta semana + próxima) --- */
+let rep3ProvCache=[];
+function rep3Buckets(){ const hoy=localDateMinus(0); const fs=weekRange(0).hasta; const pr=weekRange(1);
+  return {hoy, finSemana:fs, proxDesde:pr.desde, proxHasta:pr.hasta}; }
 function rep3Provs(){ const map={};
   state.facturas.forEach(f=>{ if(isNC(f)) return; const key=f.rut||('sinrut|'+provNombre(f));
     if(!map[key]) map[key]={key,rut:f.rut||'',nombre:provNombre(f)}; if(!map[key].nombre) map[key].nombre=provNombre(f); });
   return Object.values(map).sort((a,b)=>String(a.nombre||'').localeCompare(String(b.nombre||'')));
 }
 function rep3Data(){
-  const {desde,hasta}=rep3Range(); const sel=new Set(rep3Sel);
-  return state.facturas.filter(f=>{ if(isNC(f)) return false;
-    const v=(f.fecha_vencimiento||'').slice(0,10); if(!v||v<desde||v>hasta) return false;
-    const key=f.rut||('sinrut|'+provNombre(f)); if(sel.size && !sel.has(key)) return false;
-    return true;
-  }).sort((a,b)=>String(a.fecha_vencimiento||'').localeCompare(String(b.fecha_vencimiento||''))||String(provNombre(a)).localeCompare(String(provNombre(b))));
+  const {hoy,finSemana,proxDesde,proxHasta}=rep3Buckets(); const sel=new Set(rep3Sel); const map={};
+  state.facturas.forEach(f=>{ if(isNC(f)) return; const s=saldoOf(f); if(s<=0.0001) return;
+    const v=(f.fecha_vencimiento||'').slice(0,10); if(!v) return;
+    let b=null; if(v<hoy) b='vencidas'; else if(v<=finSemana) b='esta'; else if(v>=proxDesde&&v<=proxHasta) b='prox';
+    if(!b) return;
+    const key=f.rut||('sinrut|'+provNombre(f)); if(sel.size && !sel.has(key)) return;
+    if(!map[key]) map[key]={key,rut:f.rut||'',nombre:provNombre(f),vencidas:[],esta:[],prox:[],sub:0};
+    if(!map[key].nombre) map[key].nombre=provNombre(f);
+    map[key][b].push(f); map[key].sub+=s;
+  });
+  return Object.values(map).sort((a,b)=>String(a.nombre||'').localeCompare(String(b.nombre||'')));
 }
-function rep3SetSel(el){ rep3Sel=[...el.selectedOptions].map(o=>o.value); repResultRender(); }
+function rep3Toggle(i){ const k=rep3ProvCache[i].key; rep3Sel = rep3Sel.includes(k)?rep3Sel.filter(x=>x!==k):[...rep3Sel,k]; repResultRender(); }
+function rep3SelAll(){ rep3Sel=rep3Provs().map(p=>p.key); render(); }
+function rep3Clear(){ rep3Sel=[]; render(); }
 function rep3HTML(){
-  const provs=rep3Provs();
+  rep3ProvCache=rep3Provs();
   return `<div class="card pad">
-    <div class="filters">
-      <div class="field"><label>Semana (por vencimiento)</label><select onchange="rep3Sem=this.value;repResultRender()">
-        <option value="anterior" ${rep3Sem==='anterior'?'selected':''}>Semana anterior</option>
-        <option value="actual" ${rep3Sem==='actual'?'selected':''}>Semana actual</option>
-        <option value="proxima" ${rep3Sem==='proxima'?'selected':''}>Semana próxima</option></select></div>
-      <div class="field"><label>Proveedores (vacío = todos · Ctrl/⌘ para varios)</label>
-        <select multiple size="5" onchange="rep3SetSel(this)" style="min-width:260px;height:auto">
-          ${provs.map(p=>`<option value="${esc(p.key)}" ${rep3Sel.includes(p.key)?'selected':''}>${esc(p.nombre||p.rut||'(sin nombre)')}</option>`).join('')}
-        </select></div>
-      <div class="spacer"></div>
-      <div class="field" style="align-self:flex-end"><button class="btn navy" onclick="rep3Export()">⊕ Exportar a Excel</button></div>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:10px">
+      <div><div class="card-title" style="margin:0">Resumen de vencimientos</div>
+        <div class="preview-note" style="margin:4px 0 0">Facturas <b>vencidas (mora)</b> + las que <b>vencen esta semana</b> + las que <b>vencen la próxima semana</b>. Sin selección = todos los proveedores.</div></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn navy" onclick="rep3Export()">⊕ Excel</button>
+        <button class="btn primary" onclick="rep3ExportPDF()">🖨 PDF</button>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:8px">
+      <button class="btn sm ghost" onclick="rep3SelAll()">Marcar todos</button>
+      <button class="btn sm ghost" onclick="rep3Clear()">Limpiar selección</button>
+    </div>
+    <div class="prov-checks">
+      ${rep3ProvCache.map((p,i)=>`<label class="pchk"><input type="checkbox" ${rep3Sel.includes(p.key)?'checked':''} onchange="rep3Toggle(${i})"> ${esc(p.nombre||p.rut||'(sin nombre)')}</label>`).join('')}
     </div>
     <div id="repResult">${rep3TableHTML()}</div>
   </div>`;
 }
 function rep3TableHTML(){
-  const data=rep3Data(); const r=rep3Range();
-  if(!data.length) return `<div class="preview-note">Semana: <b>${rangoLabel(r)}</b></div><div class="empty"><div class="ico">📅</div><div class="t">Sin vencimientos en la semana</div></div>`;
-  const tot=data.reduce((t,f)=>({tot:t.tot+(+f.monto_total||0),sal:t.sal+saldoOf(f)}),{tot:0,sal:0});
-  return `<div class="preview-note">Semana: <b>${rangoLabel(r)}</b> · ${data.length} facturas${rep3Sel.length?(' · '+rep3Sel.length+' proveedor(es)'):' · todos los proveedores'}</div>
-  <div class="table-wrap"><table>
-    <thead><tr><th>Proveedor</th><th>RUT</th><th>Folio</th><th>Vence</th><th class="r">Total</th><th class="r">Saldo</th><th>Estado</th><th>Medio de pago</th></tr></thead>
-    <tbody>${data.map(f=>`<tr><td>${esc(provNombre(f)||'—')}</td><td>${esc(f.rut||'—')}</td><td><b>${esc(f.folio)}</b></td>
-      <td>${fmtDate(f.fecha_vencimiento)}</td><td class="r money">${CLP(f.monto_total)}</td><td class="r money">${CLP(saldoOf(f))}</td>
-      <td>${rep2EstadoTxt(f)}</td><td>${esc(medioDeFactura(f))}</td></tr>`).join('')}
-      <tr style="font-weight:700;border-top:2px solid var(--border)"><td colspan="4">TOTAL</td><td class="r money">${CLP(tot.tot)}</td><td class="r money">${CLP(tot.sal)}</td><td></td><td></td></tr>
-    </tbody></table></div>`;
+  const data=rep3Data();
+  if(!data.length) return `<div class="empty"><div class="ico">📅</div><div class="t">Sin vencimientos (ni vencidas ni esta/próxima semana)</div></div>`;
+  let g=0;
+  const rows=l=>l.map(f=>`<tr><td><b>${esc(f.folio)}</b></td><td>${fmtDate(f.fecha_vencimiento)}</td><td class="r money">${CLP(f.monto_total)}</td><td class="r money">${CLP(saldoOf(f))}</td><td>${esc(medioDeFactura(f))}</td></tr>`).join('');
+  const sec=(label,cls,l)=>l.length?`<tr class="rep-sec ${cls}"><td colspan="5">${label} · ${l.length}</td></tr>${rows(l)}`:'';
+  const blocks=data.map(p=>{ g+=p.sub;
+    return `<div class="rep-prov">
+      <div class="rep-prov-h"><span><b>${esc(p.nombre||'—')}</b> · ${esc(p.rut||'—')}</span><b>Subtotal ${CLP(p.sub)}</b></div>
+      <div class="table-wrap"><table><thead><tr><th>Folio</th><th>Vence</th><th class="r">Total</th><th class="r">Saldo</th><th>Medio</th></tr></thead>
+      <tbody>${sec('Vencidas (mora)','s-red',p.vencidas)}${sec('Vence esta semana','s-amber',p.esta)}${sec('Vence próxima semana','s-teal',p.prox)}</tbody></table></div>
+    </div>`;
+  }).join('');
+  return `<div class="preview-note">${data.length} proveedor(es) · <b>Total general ${CLP(g)}</b></div>${blocks}`;
 }
 function rep3Export(){
-  const data=rep3Data(), r=rep3Range();
-  const aoa=[['Resumen Vencimiento Ejecutivo'],[`Semana (por vencimiento): ${fmtDate(r.desde)} a ${fmtDate(r.hasta)}`],
-    [rep3Sel.length?`${rep3Sel.length} proveedor(es) seleccionados`:'Todos los proveedores'],[],
-    ['Proveedor','RUT','Folio','Vencimiento','Total','Saldo','Estado','Medio de pago']];
-  data.forEach(f=>aoa.push([provNombre(f)||'',f.rut||'',f.folio||'',fmtDate(f.fecha_vencimiento),Math.round(+f.monto_total||0),Math.round(saldoOf(f)),rep2EstadoTxt(f),medioDeFactura(f)]));
-  const tot=data.reduce((t,f)=>({tot:t.tot+(+f.monto_total||0),sal:t.sal+saldoOf(f)}),{tot:0,sal:0});
-  aoa.push(['TOTAL','','','',Math.round(tot.tot),Math.round(tot.sal),'','']);
-  exportExcel(`vencimiento_ejecutivo_${r.desde}_${r.hasta}.xlsx`,'Vencimiento',aoa);
+  const data=rep3Data();
+  const aoa=[['Resumen de Vencimientos'],[`Generado ${fmtDate(localDateMinus(0))} · vencidas (mora) + esta semana + próxima semana`],[],
+    ['Proveedor','RUT','Bloque','Folio','Vencimiento','Total','Saldo','Medio de pago']];
+  let g=0;
+  data.forEach(p=>{
+    const add=(label,list)=>list.forEach(f=>aoa.push([p.nombre||'',p.rut||'',label,f.folio||'',fmtDate(f.fecha_vencimiento),Math.round(+f.monto_total||0),Math.round(saldoOf(f)),medioDeFactura(f)]));
+    add('Vencida (mora)',p.vencidas); add('Vence esta semana',p.esta); add('Vence próxima semana',p.prox);
+    aoa.push([p.nombre||'','','Subtotal proveedor','','','',Math.round(p.sub),'']); g+=p.sub;
+  });
+  aoa.push(['TOTAL GENERAL','','','','','',Math.round(g),'']);
+  exportExcel('resumen_vencimientos.xlsx','Vencimientos',aoa);
+}
+function rep3ExportPDF(){
+  const data=rep3Data(); const {hoy,finSemana,proxDesde,proxHasta}=rep3Buckets(); let g=0;
+  const sec=(label,list)=>{ if(!list.length) return ''; const st=list.reduce((s,f)=>s+saldoOf(f),0);
+    return `<tr class="sec"><td colspan="4">${label}</td></tr>`+
+      list.map(f=>`<tr><td>${esc(f.folio)}</td><td>${fmtDate(f.fecha_vencimiento)}</td><td class="r">${CLP(f.monto_total)}</td><td class="r">${CLP(saldoOf(f))}</td></tr>`).join('')+
+      `<tr class="sub"><td colspan="3" class="r">Subtotal ${esc(label)}</td><td class="r">${CLP(st)}</td></tr>`; };
+  const blocks=data.map(p=>{ g+=p.sub;
+    return `<h3>${esc(p.nombre||p.rut||'Proveedor')} <span>${esc(p.rut||'')}</span></h3>
+      <table>${sec('Vencidas (mora)',p.vencidas)}${sec('Vence esta semana',p.esta)}${sec('Vence próxima semana',p.prox)}
+      <tr class="ptot"><td colspan="3" class="r">Total proveedor</td><td class="r">${CLP(p.sub)}</td></tr></table>`; }).join('');
+  const html=`<!doctype html><html><head><meta charset="utf-8"><title>Resumen de vencimientos</title>
+    <style>body{font-family:Arial,Helvetica,sans-serif;color:#0f2742;padding:26px;font-size:12px}
+    h1{font-size:18px;margin:0 0 2px} .sub-h{color:#555;font-size:11px;margin-bottom:14px}
+    h3{margin:18px 0 4px;font-size:13px;border-bottom:2px solid #0f2742;padding-bottom:3px} h3 span{color:#888;font-weight:400;font-size:11px}
+    table{width:100%;border-collapse:collapse;margin-bottom:6px} td{padding:3px 7px;border-bottom:1px solid #eee} .r{text-align:right}
+    tr.sec td{background:#f1f5f9;font-weight:700;font-size:11px} tr.sub td{font-style:italic;color:#555} tr.ptot td{font-weight:700;border-top:2px solid #0f2742}
+    .grand{margin-top:18px;font-size:15px;font-weight:700;text-align:right;border-top:3px double #0f2742;padding-top:8px}
+    @media print{.noprint{display:none}}</style></head>
+    <body>
+    <h1>Don Gaviota — Resumen de vencimientos</h1>
+    <div class="sub-h">Generado ${fmtDate(localDateMinus(0))} · Vencidas (mora) + vence esta semana (${fmtDate(hoy)} – ${fmtDate(finSemana)}) + próxima semana (${fmtDate(proxDesde)} – ${fmtDate(proxHasta)})${rep3Sel.length?(' · '+data.length+' proveedor(es) seleccionados'):' · todos los proveedores'}</div>
+    ${blocks||'<p>Sin vencimientos en el período.</p>'}
+    <div class="grand">TOTAL GENERAL: ${CLP(g)}</div>
+    <button class="noprint" onclick="window.print()" style="margin-top:22px;padding:9px 18px;font-size:13px;cursor:pointer">Imprimir / Guardar PDF</button>
+    </body></html>`;
+  const w=window.open('','_blank'); if(!w){ toast('Permite las ventanas emergentes para generar el PDF','err'); return; }
+  w.document.write(html); w.document.close(); w.focus();
+  setTimeout(()=>{ try{ w.print(); }catch(_){ } }, 500);
 }
 
 /* =================== AJUSTES · USUARIOS =================== */
