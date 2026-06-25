@@ -1114,9 +1114,12 @@ function medioRowHTML(mi,i){
       <div class="field"><label>Folio cheque</label><input value="${esc(mi.folio||'')}" oninput="updMedio(${i},'folio',this.value)"></div>
       <div class="field"><label>Banco</label><input value="${esc(mi.banco||'')}" oninput="updMedio(${i},'banco',this.value)"></div>
       <div class="field"><label>Fecha canje</label><input type="date" value="${esc(mi.canje||'')}" oninput="updMedio(${i},'canje',this.value)"></div>`;
+  } else if(mi.tipo==='nc'){
+    extra=`<div class="field"><label>N° Nota de Crédito (opcional)</label><input value="${esc(mi.ref||'')}" placeholder="Folio NC" oninput="updMedio(${i},'ref',this.value)"></div>`;
   } else {
+    const lab=mi.tipo==='web_pay'?'operación':(mi.tipo==='pat'?'cargo':'transferencia');
     extra=`
-      <div class="field"><label>Fecha ${mi.tipo==='web_pay'?'operación':'transferencia'}</label><input type="date" value="${esc(mi.fecha||todayISO())}" oninput="updMedio(${i},'fecha',this.value)"></div>
+      <div class="field"><label>Fecha ${lab}</label><input type="date" value="${esc(mi.fecha||todayISO())}" oninput="updMedio(${i},'fecha',this.value)"></div>
       <div class="field"><label>Referencia (opcional)</label><input value="${esc(mi.ref||'')}" placeholder="N° operación" oninput="updMedio(${i},'ref',this.value)"></div>`;
   }
   return `<div class="medio-line">
@@ -1125,7 +1128,9 @@ function medioRowHTML(mi,i){
         <select onchange="setMedioTipo(${i},this.value)">
           <option value="transferencia" ${sel('transferencia')}>Transferencia</option>
           <option value="web_pay" ${sel('web_pay')}>Web Pay</option>
+          <option value="pat" ${sel('pat')}>PAT (Tarjeta)</option>
           <option value="cheque" ${sel('cheque')}>Cheque</option>
+          <option value="nc" ${sel('nc')}>Nota de Crédito</option>
         </select></div>
       <div class="field" style="min-width:140px;margin:0"><label>Monto</label><input inputmode="numeric" value="${mi.monto||''}" oninput="updMedio(${i},'monto',this.value)"></div>
       ${pay.medios.length>1?`<button class="btn sm danger" style="align-self:end;margin-bottom:1px" onclick="rmMedio(${i})">✕</button>`:''}
@@ -1138,15 +1143,19 @@ function rmMedio(i){ pay.medios.splice(i,1); if(!pay.medios.length) pay.medios=f
 function setMedioTipo(i,v){ pay.medios[i].tipo=v; renderPayBody(); }
 function updMedio(i,k,v){ pay.medios[i][k]=v; if(k==='monto') updateMediosTot(); }
 function sumMedios(){ return pay.medios.reduce((s,m)=>s+parseMoney(m.monto),0); }
+function sumCashMedios(){ return pay.medios.reduce((s,m)=>s+(m.tipo==='nc'?0:parseMoney(m.monto)),0); }
+function sumNcMedios(){ return pay.medios.reduce((s,m)=>s+(m.tipo==='nc'?parseMoney(m.monto):0),0); }
 function mediosTotHTML(){
   const asign=sumMedios(), net=sumItems();
   if(net<=0) return `<div class="totbar" style="margin-top:12px"><span>Asignado en medios</span><b>${CLP(asign)} / ${CLP(net)}</b></div>`;
   const exceso = asign>net+1, parcial = asign>0 && asign<net-1;
   const cls = exceso?'color:var(--red)':(parcial?'color:#a6620c':'');
+  const ncMed=sumNcMedios();
   let msg='';
   if(exceso) msg=`<div class="preview-note mismatch">⚠ La suma de los medios (${CLP(asign)}) no puede superar el neto a pagar (${CLP(net)}).</div>`;
-  else if(parcial){ const s=net-asign; msg=`<div class="preview-note abono"><b>Abono parcial:</b> se pagará ${CLP(asign)} y quedará un saldo de <b>${CLP(s)}</b> a favor del proveedor (se reflejará en el próximo pago para cuadrar con ND/NC).</div>`; }
-  return `<div class="totbar" style="margin-top:12px"><span>Asignado en medios</span><b style="${cls}">${CLP(asign)} / ${CLP(net)}</b></div>${msg}`;
+  else if(parcial){ const s=net-asign; msg=`<div class="preview-note abono"><b>Abono parcial:</b> se cubrirá ${CLP(asign)} y quedará un saldo de <b>${CLP(s)}</b> a favor del proveedor (se reflejará en el próximo pago para cuadrar con ND/NC).</div>`; }
+  const ncNote = ncMed>0 ? `<div class="preview-note" style="margin-top:6px">Incluye <b>${CLP(ncMed)}</b> en Notas de Crédito (no es efectivo). Efectivo a desembolsar: <b>${CLP(sumCashMedios())}</b>.</div>` : '';
+  return `<div class="totbar" style="margin-top:12px"><span>Asignado en medios</span><b style="${cls}">${CLP(asign)} / ${CLP(net)}</b></div>${msg}${ncNote}`;
 }
 function computeApplied(){
   // Reparte (efectivo + NC) entre las facturas seleccionadas, de más antigua a más nueva.
@@ -1181,7 +1190,7 @@ async function submitPago(btn){
   const net=sumItems();
   if(net<0){ toast('Las notas de crédito superan las facturas seleccionadas.','err'); return; }
   const lineas=pay.medios.filter(m=>parseMoney(m.monto)>0 || (m.tipo==='cheque'&&(m.folio||'').trim()));
-  const cash=sumMedios();
+  const totalMedios=sumMedios(), cash=sumCashMedios();
   if(net>0){
     if(!lineas.length){ toast('Agrega al menos un medio de pago','err'); return; }
     for(const m of lineas){
@@ -1191,9 +1200,9 @@ async function submitPago(btn){
         if(!m.canje){ toast('Cada cheque necesita fecha de canje','err'); return; }
       }
     }
-    if(cash<=0){ toast('Ingresa el monto de los medios','err'); return; }
-    if(cash>net+1){ toast('La suma de los medios no puede superar el neto a pagar','err'); return; }
-    // cash < net  ->  abono parcial permitido (queda saldo a favor del proveedor)
+    if(totalMedios<=0){ toast('Ingresa el monto de los medios','err'); return; }
+    if(totalMedios>net+1){ toast('La suma de los medios no puede superar el neto a pagar','err'); return; }
+    // totalMedios < net  ->  abono parcial permitido (queda saldo a favor del proveedor)
   }
   const applied=computeApplied();
   const allocRec=Object.entries(applied).filter(([id,v])=>+v>0.0001)
@@ -1275,7 +1284,7 @@ async function canjear(id,btn){
 }
 
 /* =================== PAGOS REALIZADOS (HISTORIAL) =================== */
-const MEDIO_LAB = { transferencia:'Transferencia', web_pay:'Web Pay', cheque:'Cheque', mixto:'Mixto', ajuste:'Ajuste' };
+const MEDIO_LAB = { transferencia:'Transferencia', web_pay:'Web Pay', pat:'PAT (Tarjeta)', cheque:'Cheque', nc:'Nota de Crédito', mixto:'Mixto', ajuste:'Ajuste' };
 let histQuery='';
 let histVentana='';
 function mondayThisWeek(){ const d=new Date(); const dow=(d.getDay()+6)%7; d.setDate(d.getDate()-dow);
@@ -1341,11 +1350,13 @@ function editPagoMedios(pagoId){
   const med=state.medios.filter(m=>m.pago_id===pagoId).map(m=>({tipo:m.medio,monto:String(Math.round(+m.monto)),fecha:m.fecha_op||todayISO(),ref:m.referencia||'',folio:'',banco:'',canje:''}));
   const chq=state.cheques.filter(c=>c.pago_id===pagoId).map(c=>({tipo:'cheque',monto:String(Math.round(+c.monto)),fecha:'',ref:'',folio:c.folio_cheque||'',banco:c.banco||'',canje:(c.fecha_canje||'').slice(0,10)}));
   let lines=[...med,...chq]; if(!lines.length) lines=freshMedios();
-  pedit={pagoId, target:+p.monto_total||0, medios:lines, obs:p.observacion||''};
+  const tgt=lines.reduce((s,m)=>s+parseMoney(m.monto),0)||(+p.monto_total||0);
+  pedit={pagoId, target:tgt, medios:lines, obs:p.observacion||''};
   renderEditMedios();
 }
 function closePedit(){ pedit=null; document.getElementById('modalHost').innerHTML=''; }
 function peSum(){ return pedit.medios.reduce((s,m)=>s+parseMoney(m.monto),0); }
+function peSumCash(){ return pedit.medios.reduce((s,m)=>s+(m.tipo==='nc'?0:parseMoney(m.monto)),0); }
 function peAdd(){ pedit.medios.push({tipo:'transferencia',monto:'',fecha:todayISO(),ref:'',folio:'',banco:'',canje:''}); renderEditMedios(); }
 function peRm(i){ pedit.medios.splice(i,1); if(!pedit.medios.length) pedit.medios=freshMedios(); renderEditMedios(); }
 function peSetTipo(i,v){ pedit.medios[i].tipo=v; renderEditMedios(); }
@@ -1360,8 +1371,11 @@ function peditRowHTML(mi,i){
     extra=`<div class="field"><label>Folio cheque</label><input value="${esc(mi.folio||'')}" oninput="peUpd(${i},'folio',this.value)"></div>
       <div class="field"><label>Banco</label><input value="${esc(mi.banco||'')}" oninput="peUpd(${i},'banco',this.value)"></div>
       <div class="field"><label>Fecha canje</label><input type="date" value="${esc(mi.canje||'')}" oninput="peUpd(${i},'canje',this.value)"></div>`;
+  } else if(mi.tipo==='nc'){
+    extra=`<div class="field"><label>N° Nota de Crédito (opcional)</label><input value="${esc(mi.ref||'')}" placeholder="Folio NC" oninput="peUpd(${i},'ref',this.value)"></div>`;
   } else {
-    extra=`<div class="field"><label>Fecha ${mi.tipo==='web_pay'?'operación':'transferencia'}</label><input type="date" value="${esc(mi.fecha||todayISO())}" oninput="peUpd(${i},'fecha',this.value)"></div>
+    const lab=mi.tipo==='web_pay'?'operación':(mi.tipo==='pat'?'cargo':'transferencia');
+    extra=`<div class="field"><label>Fecha ${lab}</label><input type="date" value="${esc(mi.fecha||todayISO())}" oninput="peUpd(${i},'fecha',this.value)"></div>
       <div class="field"><label>Referencia (opcional)</label><input value="${esc(mi.ref||'')}" placeholder="N° operación" oninput="peUpd(${i},'ref',this.value)"></div>`;
   }
   return `<div class="medio-line"><div class="medio-head">
@@ -1369,7 +1383,9 @@ function peditRowHTML(mi,i){
         <select onchange="peSetTipo(${i},this.value)">
           <option value="transferencia" ${sel('transferencia')}>Transferencia</option>
           <option value="web_pay" ${sel('web_pay')}>Web Pay</option>
-          <option value="cheque" ${sel('cheque')}>Cheque</option></select></div>
+          <option value="pat" ${sel('pat')}>PAT (Tarjeta)</option>
+          <option value="cheque" ${sel('cheque')}>Cheque</option>
+          <option value="nc" ${sel('nc')}>Nota de Crédito</option></select></div>
       <div class="field" style="min-width:140px;margin:0"><label>Monto</label><input inputmode="numeric" value="${mi.monto||''}" oninput="peUpd(${i},'monto',this.value)"></div>
       ${pedit.medios.length>1?`<button class="btn sm danger" style="align-self:end;margin-bottom:1px" onclick="peRm(${i})">✕</button>`:''}
     </div><div class="medio-extra">${extra}</div></div>`;
@@ -1418,7 +1434,7 @@ async function saveEditMedios(btn){
         estado:prev?'canjeado':'pendiente',fecha_canjeado:prev?prev.fecha_canjeado:null};
     });
     if(chqRec.length) await api('/cheques',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify(chqRec)});
-    const patch={medio_pago:medioResumen, observacion:pedit.obs.trim()||null}; if(fop) patch.fecha_pago=fop;
+    const patch={medio_pago:medioResumen, monto_total:peSumCash(), observacion:pedit.obs.trim()||null}; if(fop) patch.fecha_pago=fop;
     await api('/pagos?id=eq.'+pagoId,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify(patch)});
     toast('Medios actualizados','ok'); closePedit(); await loadAll();
   }catch(e){ btn.disabled=false; btn.textContent='Guardar cambios'; toast('Error: '+e.message,'err'); }
@@ -1671,6 +1687,12 @@ function rep3Provs(){ const map={};
     if(!map[key]) map[key]={key,rut:f.rut||'',nombre:provNombre(f)}; if(!map[key].nombre) map[key].nombre=provNombre(f); });
   return Object.values(map).sort((a,b)=>String(a.nombre||'').localeCompare(String(b.nombre||'')));
 }
+function ncDispMap(){
+  const m={};
+  state.facturas.forEach(f=>{ if(!isNC(f)) return; const s=saldoOf(f); if(s<=0.0001) return;
+    const key=f.rut||('sinrut|'+provNombre(f)); m[key]=(m[key]||0)+s; });
+  return m;
+}
 function rep3Data(){
   const {hoy,finSemana,proxDesde,proxHasta}=rep3Buckets(); const sel=new Set(rep3Sel); const map={};
   state.facturas.forEach(f=>{ if(isNC(f)) return; const s=saldoOf(f); if(s<=0.0001) return;
@@ -1678,10 +1700,12 @@ function rep3Data(){
     let b=null; if(v<hoy) b='vencidas'; else if(v<=finSemana) b='esta'; else if(v>=proxDesde&&v<=proxHasta) b='prox';
     if(!b) return;
     const key=f.rut||('sinrut|'+provNombre(f)); if(sel.size && !sel.has(key)) return;
-    if(!map[key]) map[key]={key,rut:f.rut||'',nombre:provNombre(f),vencidas:[],esta:[],prox:[],sub:0};
+    if(!map[key]) map[key]={key,rut:f.rut||'',nombre:provNombre(f),vencidas:[],esta:[],prox:[],sub:0,ncDisp:0,neto:0};
     if(!map[key].nombre) map[key].nombre=provNombre(f);
     map[key][b].push(f); map[key].sub+=s;
   });
+  const ncm=ncDispMap();
+  Object.values(map).forEach(p=>{ p.ncDisp=ncm[p.key]||0; p.neto=Math.max(0,p.sub-p.ncDisp); });
   return Object.values(map).sort((a,b)=>String(a.nombre||'').localeCompare(String(b.nombre||'')));
 }
 function rep3Toggle(i){ const k=rep3ProvCache[i].key; rep3Sel = rep3Sel.includes(k)?rep3Sel.filter(x=>x!==k):[...rep3Sel,k]; repResultRender(); }
@@ -1711,41 +1735,50 @@ function rep3HTML(){
 function rep3TableHTML(){
   const data=rep3Data();
   if(!data.length) return `<div class="empty"><div class="ico">📅</div><div class="t">Sin vencimientos (ni vencidas ni esta/próxima semana)</div></div>`;
-  let g=0;
+  let g=0, gNeto=0;
   const rows=l=>l.map(f=>`<tr><td><b>${esc(f.folio)}</b></td><td>${fmtDate(f.fecha_vencimiento)}</td><td class="r money">${CLP(f.monto_total)}</td><td class="r money">${CLP(saldoOf(f))}</td><td>${esc(medioDeFactura(f))}</td></tr>`).join('');
   const sec=(label,cls,l)=>l.length?`<tr class="rep-sec ${cls}"><td colspan="5">${label} · ${l.length}</td></tr>${rows(l)}`:'';
-  const blocks=data.map(p=>{ g+=p.sub;
+  const blocks=data.map(p=>{ g+=p.sub; gNeto+=p.neto;
+    const ncLine = p.ncDisp>0 ? `<tr style="color:var(--teal);font-weight:600"><td colspan="3" class="r">NC disponible (RUT ${esc(p.rut||'—')})</td><td class="r money">-${CLP(p.ncDisp)}</td><td></td></tr>
+      <tr style="font-weight:700;border-top:1px solid var(--border)"><td colspan="3" class="r">Neto a pagar</td><td class="r money">${CLP(p.neto)}</td><td></td></tr>` : '';
     return `<div class="rep-prov">
-      <div class="rep-prov-h"><span><b>${esc(p.nombre||'—')}</b> · ${esc(p.rut||'—')}</span><b>Subtotal ${CLP(p.sub)}</b></div>
+      <div class="rep-prov-h"><span><b>${esc(p.nombre||'—')}</b> · ${esc(p.rut||'—')}</span><b>Subtotal ${CLP(p.sub)}${p.ncDisp>0?` · Neto ${CLP(p.neto)}`:''}</b></div>
       <div class="table-wrap"><table><thead><tr><th>Folio</th><th>Vence</th><th class="r">Total</th><th class="r">Saldo</th><th>Medio</th></tr></thead>
-      <tbody>${sec('Vencidas (mora)','s-red',p.vencidas)}${sec('Vence esta semana','s-amber',p.esta)}${sec('Vence próxima semana','s-teal',p.prox)}</tbody></table></div>
+      <tbody>${sec('Vencidas (mora)','s-red',p.vencidas)}${sec('Vence esta semana','s-amber',p.esta)}${sec('Vence próxima semana','s-teal',p.prox)}${ncLine}</tbody></table></div>
     </div>`;
   }).join('');
-  return `<div class="preview-note">${data.length} proveedor(es) · <b>Total general ${CLP(g)}</b></div>${blocks}`;
+  const totNc = g-gNeto;
+  return `<div class="preview-note">${data.length} proveedor(es) · <b>Total vencido ${CLP(g)}</b>${totNc>0?` · NC disponible -${CLP(totNc)} · <b>Neto a pagar ${CLP(gNeto)}</b>`:''}</div>${blocks}`;
 }
 function rep3Export(){
   const data=rep3Data();
   const aoa=[['Resumen de Vencimientos'],[`Generado ${fmtDate(localDateMinus(0))} · vencidas (mora) + esta semana + próxima semana`],[],
     ['Proveedor','RUT','Bloque','Folio','Vencimiento','Total','Saldo','Medio de pago']];
-  let g=0;
+  let g=0, gNeto=0;
   data.forEach(p=>{
     const add=(label,list)=>list.forEach(f=>aoa.push([p.nombre||'',p.rut||'',label,f.folio||'',fmtDate(f.fecha_vencimiento),Math.round(+f.monto_total||0),Math.round(saldoOf(f)),medioDeFactura(f)]));
     add('Vencida (mora)',p.vencidas); add('Vence esta semana',p.esta); add('Vence próxima semana',p.prox);
-    aoa.push([p.nombre||'','','Subtotal proveedor','','','',Math.round(p.sub),'']); g+=p.sub;
+    aoa.push([p.nombre||'','','Subtotal vencido','','','',Math.round(p.sub),'']);
+    if(p.ncDisp>0){ aoa.push([p.nombre||'','','NC disponible','','','',-Math.round(p.ncDisp),'']);
+      aoa.push([p.nombre||'','','Neto a pagar','','','',Math.round(p.neto),'']); }
+    g+=p.sub; gNeto+=p.neto;
   });
-  aoa.push(['TOTAL GENERAL','','','','','',Math.round(g),'']);
+  aoa.push([]); aoa.push(['TOTAL VENCIDO','','','','','',Math.round(g),'']);
+  if(g-gNeto>0){ aoa.push(['NC DISPONIBLE','','','','','',-Math.round(g-gNeto),'']); aoa.push(['NETO A PAGAR','','','','','',Math.round(gNeto),'']); }
   exportExcel('resumen_vencimientos.xlsx','Vencimientos',aoa);
 }
 function rep3ExportPDF(){
-  const data=rep3Data(); const {hoy,finSemana,proxDesde,proxHasta}=rep3Buckets(); let g=0;
+  const data=rep3Data(); const {hoy,finSemana,proxDesde,proxHasta}=rep3Buckets(); let g=0, gNeto=0;
   const sec=(label,list)=>{ if(!list.length) return ''; const st=list.reduce((s,f)=>s+saldoOf(f),0);
     return `<tr class="sec"><td colspan="4">${label}</td></tr>`+
       list.map(f=>`<tr><td>${esc(f.folio)}</td><td>${fmtDate(f.fecha_vencimiento)}</td><td class="r">${CLP(f.monto_total)}</td><td class="r">${CLP(saldoOf(f))}</td></tr>`).join('')+
       `<tr class="sub"><td colspan="3" class="r">Subtotal ${esc(label)}</td><td class="r">${CLP(st)}</td></tr>`; };
-  const blocks=data.map(p=>{ g+=p.sub;
+  const blocks=data.map(p=>{ g+=p.sub; gNeto+=p.neto;
+    const ncRows = p.ncDisp>0 ? `<tr class="sub" style="color:#0e7c7b"><td colspan="3" class="r">NC disponible (RUT ${esc(p.rut||'—')})</td><td class="r">-${CLP(p.ncDisp)}</td></tr>
+      <tr class="ptot"><td colspan="3" class="r">Neto a pagar</td><td class="r">${CLP(p.neto)}</td></tr>` : '';
     return `<h3>${esc(p.nombre||p.rut||'Proveedor')} <span>${esc(p.rut||'')}</span></h3>
       <table>${sec('Vencidas (mora)',p.vencidas)}${sec('Vence esta semana',p.esta)}${sec('Vence próxima semana',p.prox)}
-      <tr class="ptot"><td colspan="3" class="r">Total proveedor</td><td class="r">${CLP(p.sub)}</td></tr></table>`; }).join('');
+      <tr class="ptot"><td colspan="3" class="r">Subtotal vencido</td><td class="r">${CLP(p.sub)}</td></tr>${ncRows}</table>`; }).join('');
   const html=`<!doctype html><html><head><meta charset="utf-8"><title>Resumen de vencimientos</title>
     <style>body{font-family:Arial,Helvetica,sans-serif;color:#0f2742;padding:26px;font-size:12px}
     h1{font-size:18px;margin:0 0 2px} .sub-h{color:#555;font-size:11px;margin-bottom:14px}
@@ -1758,7 +1791,7 @@ function rep3ExportPDF(){
     <h1>Don Gaviota — Resumen de vencimientos</h1>
     <div class="sub-h">Generado ${fmtDate(localDateMinus(0))} · Vencidas (mora) + vence esta semana (${fmtDate(hoy)} – ${fmtDate(finSemana)}) + próxima semana (${fmtDate(proxDesde)} – ${fmtDate(proxHasta)})${rep3Sel.length?(' · '+data.length+' proveedor(es) seleccionados'):' · todos los proveedores'}</div>
     ${blocks||'<p>Sin vencimientos en el período.</p>'}
-    <div class="grand">TOTAL GENERAL: ${CLP(g)}</div>
+    <div class="grand">TOTAL VENCIDO: ${CLP(g)}${(g-gNeto)>0?`<br>NC DISPONIBLE: -${CLP(g-gNeto)}<br>NETO A PAGAR: ${CLP(gNeto)}`:''}</div>
     <button class="noprint" onclick="window.print()" style="margin-top:22px;padding:9px 18px;font-size:13px;cursor:pointer">Imprimir / Guardar PDF</button>
     </body></html>`;
   const w=window.open('','_blank'); if(!w){ toast('Permite las ventanas emergentes para generar el PDF','err'); return; }
