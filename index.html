@@ -424,6 +424,10 @@ function saldoOf(f){ return Math.max(0, (+f.monto_total||0) - (state.saldo[f.id]
 function isNC(f){ const t=normKey(f.tipo_doc); return t.includes('nota de credito')||t.includes('nota credito')||t==='nc'; }
 function isND(f){ const t=normKey(f.tipo_doc); return t.includes('nota de debito')||t.includes('nota debito')||t==='nd'; }
 function provNombre(f){ const n=(f.nombre||'').trim(); if(n) return n; const r=(f.rut||'').trim(); return (r&&state._rutNom&&state._rutNom[r])||''; }
+function normRut(r){ return String(r||'').toLowerCase().replace(/[.\s]/g,''); }
+function normFolio(f){ return (String(f||'').trim().toLowerCase().replace(/\s+/g,'').replace(/^0+/,''))||'0'; }
+function dupKey(rut,folio){ return normRut(rut)+'|'+normFolio(folio); }
+function existeFacturaKey(rut,folio){ const k=dupKey(rut,folio); return state.facturas.some(f=>dupKey(f.rut,f.folio)===k); }
 function countNombresPorCompletar(){
   const map=state._rutNom||{}; let c=0;
   state.facturas.forEach(f=>{ const r=(f.rut||'').trim(), n=(f.nombre||'').trim(); if(r&&!n&&map[r]) c++; });
@@ -808,6 +812,7 @@ async function saveNuevaFactura(btn){
   const folio=val('nf_folio').trim(), total=parseMoney(val('nf_total'));
   if(!folio){ toast('Falta el folio','err'); return; }
   if(total<=0){ toast('Monto inválido','err'); return; }
+  if(existeFacturaKey(val('nf_rut').trim(), folio)){ toast('Ya existe un documento con ese folio para ese RUT','err'); return; }
   const rec={ tipo_doc:val('nf_tipo').trim()||null, folio, fecha_emision:val('nf_emi')||null,
     rut:val('nf_rut').trim()||null, nombre:val('nf_nom').trim()||null, monto_total:total,
     fecha_vencimiento:val('nf_venc')||addDays(val('nf_emi')||todayISO(),30), estado:'pendiente' };
@@ -889,27 +894,42 @@ function renderImportPreview(found, fmtLabel){
     ${missing.length?`<span class="mismatch">Faltan columnas: ${missing.join(', ')}.</span>`:'Mapeo de columnas correcto ✓'}
     ${fmtLabel?`Formato de fecha detectado: <b>${fmtLabel}</b>.`:''}
     Revisa que las fechas se vean bien antes de importar.</div>`;
+  const exist=new Set(state.facturas.map(f=>dupKey(f.rut,f.folio)));
+  const vist=new Set(); let dupCount=0;
+  importRows.forEach(r=>{ const k=dupKey(r.rut,r.folio); if(exist.has(k)||vist.has(k)) dupCount++; else vist.add(k); });
+  const nuevos=importRows.length-dupCount;
+  const dupNote = dupCount>0 ? `<div class="preview-note abono">Se omitirán <b>${dupCount}</b> fila(s) ya existentes (mismo RUT y folio). Se agregarán <b>${nuevos}</b>.</div>` : '';
   const rows=importRows.slice(0,8).map(r=>`<tr>
     <td>${esc(r.tipo_doc||'—')}</td><td><b>${esc(r.folio||'—')}</b></td><td>${r.fecha_emision?fmtDate(r.fecha_emision):'—'}</td>
     <td>${esc(r.rut||'—')}</td><td>${esc(r.nombre||'—')}</td><td class="r money">${CLP(r.monto_total)}</td>
     <td>${r.fecha_vencimiento?fmtDate(r.fecha_vencimiento):'—'}</td></tr>`).join('');
-  host.innerHTML=head+`<div class="table-wrap"><table>
+  host.innerHTML=head+dupNote+`<div class="table-wrap"><table>
     <thead><tr><th>Tipo</th><th>Folio</th><th>Emisión</th><th>RUT</th><th>Nombre</th><th class="r">Total</th><th>Vence</th></tr></thead>
     <tbody>${rows}</tbody></table></div>
     ${importRows.length>8?`<div class="preview-note">… y ${importRows.length-8} filas más.</div>`:''}
-    <button class="btn primary" ${missing.length?'disabled':''} onclick="doImport(this)">Importar ${importRows.length} facturas</button>`;
+    <button class="btn primary" ${missing.length?'disabled':''} onclick="doImport(this)">Importar ${nuevos>0?nuevos:importRows.length} facturas</button>`;
 }
 async function doImport(btn){
   btn.disabled=true; btn.innerHTML='<span class="spin"></span> Importando…';
   const now=new Date();
   const lote=`${importFileName} · ${pad2(now.getDate())}-${pad2(now.getMonth()+1)}-${now.getFullYear()} ${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
-  const recsBase=importRows.map(r=>({...r, estado:'pendiente'}));
+  // Dedup por RUT+folio normalizado: contra lo ya cargado y dentro del mismo Excel
+  const existentes=new Set(state.facturas.map(f=>dupKey(f.rut,f.folio)));
+  const vistos=new Set(); let omit=0;
+  const recsBase=importRows.filter(r=>{ const k=dupKey(r.rut,r.folio);
+    if(existentes.has(k)||vistos.has(k)){ omit++; return false; }
+    vistos.add(k); return true;
+  }).map(r=>({...r, estado:'pendiente'}));
+  if(!recsBase.length){ btn.disabled=false; btn.textContent='Importar';
+    toast(`Nada por importar: las ${omit} fila(s) ya existían (mismo RUT y folio)`,'ok');
+    document.getElementById('modalHost').innerHTML=''; return; }
   const postFacturas=recs=>api('/facturas?on_conflict=folio,rut',{ method:'POST',
     headers:{ Prefer:'resolution=ignore-duplicates,return=minimal' }, body:JSON.stringify(recs) });
   const finish=()=>{ document.getElementById('modalHost').innerHTML=''; importRows=[]; loadAll(); };
+  const msgOk=`Importación lista: ${recsBase.length} agregada(s)${omit?`, ${omit} duplicada(s) omitida(s)`:''}`;
   try{
     await postFacturas(recsBase.map(r=>({...r, lote_carga:lote})));
-    toast(`Importación lista (${recsBase.length} filas, duplicados omitidos)`,'ok'); finish();
+    toast(msgOk,'ok'); finish();
   }catch(e){
     if(/lote_carga/i.test(e.message)){
       // La columna aún no existe (o caché sin refrescar): importa sin etiqueta
