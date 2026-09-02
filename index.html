@@ -357,6 +357,20 @@ async function api(path, opts={}){
   const txt = await res.text();
   return txt ? JSON.parse(txt) : null;
 }
+// Trae TODAS las filas paginando de 1000 en 1000 (Supabase limita a 1000 por consulta)
+async function apiAll(path){
+  const PAGE=1000; let offset=0, all=[];
+  for(;;){
+    const sep=path.includes('?')?'&':'?';
+    const page=await api(`${path}${sep}limit=${PAGE}&offset=${offset}`);
+    if(!Array.isArray(page)||!page.length) break;
+    all=all.concat(page);
+    if(page.length<PAGE) break;
+    offset+=PAGE;
+    if(offset>500000) break; // tope de seguridad
+  }
+  return all;
+}
 
 /* =================== HELPERS =================== */
 const CLP = n => '$'+(Math.round((+n||0))).toLocaleString('es-CL');
@@ -428,6 +442,7 @@ function normRut(r){ return String(r||'').toLowerCase().replace(/[.\s]/g,''); }
 function normFolio(f){ return (String(f||'').trim().toLowerCase().replace(/\s+/g,'').replace(/^0+/,''))||'0'; }
 function dupKey(rut,folio){ return normRut(rut)+'|'+normFolio(folio); }
 function existeFacturaKey(rut,folio){ const k=dupKey(rut,folio); return state.facturas.some(f=>dupKey(f.rut,f.folio)===k); }
+function verFacturaEnLista(folio){ facFilter={estado:'',q:String(folio||''),imp:'',impDesde:'',impHasta:''}; document.getElementById('modalHost').innerHTML=''; navTo('facturas'); }
 function countNombresPorCompletar(){
   const map=state._rutNom||{}; let c=0;
   state.facturas.forEach(f=>{ const r=(f.rut||'').trim(), n=(f.nombre||'').trim(); if(r&&!n&&map[r]) c++; });
@@ -561,14 +576,14 @@ async function loadAll(){
   document.getElementById('main').innerHTML='<div class="loading-screen"><span class="spin"></span> Cargando datos…</div>';
   try{
     const [facturas, alloc, cheques, pagos, usuarios] = await Promise.all([
-      api('/facturas?select=*&order=fecha_emision.desc.nullslast,id.desc'),
-      api('/pagos_facturas?select=*'),
-      api('/cheques?select=*,pagos(rut,nombre)&order=fecha_canje.asc.nullslast'),
-      api('/pagos?select=*&order=created_at.desc'),
+      apiAll('/facturas?select=*&order=fecha_emision.desc.nullslast,id.desc'),
+      apiAll('/pagos_facturas?select=*&order=id.asc'),
+      apiAll('/cheques?select=*,pagos(rut,nombre)&order=fecha_canje.asc.nullslast,id.asc'),
+      apiAll('/pagos?select=*&order=created_at.desc,id.desc'),
       api('/usuarios?select=*&order=id.asc'),
     ]);
     state.facturas=facturas||[]; state.alloc=alloc||[]; state.cheques=cheques||[]; state.pagos=pagos||[]; state.usuarios=usuarios||[];
-    try{ state.medios=await api('/pago_medios?select=*')||[]; }catch(_){ state.medios=[]; }
+    try{ state.medios=await apiAll('/pago_medios?select=*&order=id.asc')||[]; }catch(_){ state.medios=[]; }
     state.saldo={};
     state.alloc.forEach(a=>{ state.saldo[a.factura_id]=(state.saldo[a.factura_id]||0)+(+a.monto_aplicado||0); });
     state._rutNom={};
@@ -801,6 +816,7 @@ function openNuevaFactura(){
       <div class="field"><label>Monto total *</label><input id="nf_total" inputmode="numeric" placeholder="0"></div>
       <div class="field"><label>Fecha vencimiento</label><input id="nf_venc" type="date"></div>
     </div>
+    <div id="nfDup"></div>
     <div style="display:flex;gap:10px;margin-top:6px">
       <button class="btn primary" onclick="saveNuevaFactura(this)">Guardar factura</button>
       <button class="btn ghost" onclick="document.getElementById('modalHost').innerHTML=''">Cancelar</button>
@@ -812,7 +828,18 @@ async function saveNuevaFactura(btn){
   const folio=val('nf_folio').trim(), total=parseMoney(val('nf_total'));
   if(!folio){ toast('Falta el folio','err'); return; }
   if(total<=0){ toast('Monto inválido','err'); return; }
-  if(existeFacturaKey(val('nf_rut').trim(), folio)){ toast('Ya existe un documento con ese folio para ese RUT','err'); return; }
+  const dupes=state.facturas.filter(f=>dupKey(f.rut,f.folio)===dupKey(val('nf_rut').trim(), folio));
+  if(dupes.length){
+    const d=dupes[0]; const est=d.estado||'—'; const sal=saldoOf(d);
+    const box=document.getElementById('nfDup');
+    if(box) box.innerHTML=`<div class="preview-note abono" style="margin-top:8px">
+      <b>Ya existe este documento en la base:</b><br>
+      Folio ${esc(d.folio)} · ${esc(d.tipo_doc||'—')} · ${esc(provNombre(d)||'sin nombre')} (${esc(d.rut||'—')})<br>
+      Monto ${CLP(d.monto_total)} · Saldo ${CLP(sal)} · Estado: <b>${esc(est)}</b>${d.lote_carga?`<br>Cargada en: ${esc(d.lote_carga)}`:''}<br>
+      <span style="color:var(--muted)">Si no la ves en la lista de Facturas, revisa que los filtros de <b>Estado</b> e <b>Importación</b> estén en "Todas" y busca por el folio.</span><br>
+      <button class="btn sm navy" style="margin-top:8px" onclick="verFacturaEnLista('${(d.folio||'').replace(/'/g,"\\'")}')">Ver en Facturas</button></div>`;
+    toast('Ese folio ya existe para ese RUT (ver detalle abajo)','err'); return;
+  }
   const rec={ tipo_doc:val('nf_tipo').trim()||null, folio, fecha_emision:val('nf_emi')||null,
     rut:val('nf_rut').trim()||null, nombre:val('nf_nom').trim()||null, monto_total:total,
     fecha_vencimiento:val('nf_venc')||addDays(val('nf_emi')||todayISO(),30), estado:'pendiente' };
