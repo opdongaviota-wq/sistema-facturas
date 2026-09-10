@@ -383,6 +383,11 @@ const val = id => document.getElementById(id).value;
 
 function normKey(s){ return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
   .replace(/[._]/g,' ').replace(/\s+/g,' ').trim(); }
+function levDist(a,b){ a=a||''; b=b||''; const m=[]; for(let i=0;i<=a.length;i++){ m[i]=[i]; }
+  for(let j=0;j<=b.length;j++){ m[0][j]=j; }
+  for(let i=1;i<=a.length;i++) for(let j=1;j<=b.length;j++)
+    m[i][j]=Math.min(m[i-1][j]+1, m[i][j-1]+1, m[i-1][j-1]+(a[i-1]===b[j-1]?0:1));
+  return m[a.length][b.length]; }
 function parseMoney(v){
   if(v==null||v==='') return 0;
   if(typeof v==='number') return v;
@@ -872,7 +877,7 @@ const HEADER_MAP = {
   'folio':'folio','nro':'folio','numero':'folio','n documento':'folio',
   'f emision':'fecha_emision','fecha emision':'fecha_emision','emision':'fecha_emision',
   'rut':'rut','rut proveedor':'rut',
-  'nombre':'nombre','razon social':'nombre','proveedor':'nombre','nombre proveedor':'nombre',
+  'nombre':'nombre','razon social':'nombre','proveedor':'nombre','nombre proveedor':'nombre','nobre':'nombre','razon':'nombre',
   'total':'monto_total','monto':'monto_total','monto total':'monto_total','valor':'monto_total','total bruto':'monto_total',
   'vencimiento':'fecha_vencimiento','fecha vencimiento':'fecha_vencimiento','f vencimiento':'fecha_vencimiento','vence':'fecha_vencimiento',
 };
@@ -887,8 +892,15 @@ function handleXlsx(file){
       const ws=wb.Sheets[wb.SheetNames[0]];
       const raw=XLSX.utils.sheet_to_json(ws,{defval:'',raw:true});
       if(!raw.length){ toast('La hoja está vacía','err'); return; }
-      const mapping={};
-      Object.keys(raw[0]).forEach(h=>{ const k=normKey(h); if(HEADER_MAP[k]) mapping[h]=HEADER_MAP[k]; });
+      const mapping={}; const taken=new Set();
+      Object.keys(raw[0]).forEach(h=>{ const k=normKey(h); if(HEADER_MAP[k]){ mapping[h]=HEADER_MAP[k]; taken.add(HEADER_MAP[k]); } });
+      // Fallback tolerante a errores de tipeo (ej: "Nobre" -> nombre, "Emison" -> emisión)
+      Object.keys(raw[0]).forEach(h=>{ if(mapping[h]) return; const k=normKey(h); if(!k) return;
+        let best=null,bestd=99;
+        for(const key in HEADER_MAP){ const f=HEADER_MAP[key]; if(taken.has(f)) continue;
+          const d=levDist(k,key); if(d<bestd){ bestd=d; best={key,f}; } }
+        if(best && bestd<=2 && Math.abs(k.length-best.key.length)<=2){ mapping[h]=best.f; taken.add(best.f); }
+      });
       // Detectar orden de día/mes por columna de fecha
       const fmtByField={};
       ['fecha_emision','fecha_vencimiento'].forEach(f=>{
@@ -915,6 +927,9 @@ function handleXlsx(file){
 function renderImportPreview(found, fmtLabel){
   const need=['folio','monto_total'];
   const missing=need.filter(n=>!found.includes(n));
+  const soft=[['nombre','Nombre de proveedor'],['rut','RUT'],['fecha_emision','Fecha de emisión']];
+  const softMissing=soft.filter(([f])=>!found.includes(f));
+  const softNote = softMissing.length ? `<div class="preview-note mismatch">⚠ No se reconocieron estas columnas: <b>${softMissing.map(x=>x[1]).join(', ')}</b>. Se importarían en blanco. Revisa los encabezados del Excel (ej: escribe "Nombre" en vez de "Nobre").</div>` : '';
   const host=document.getElementById('importPreview');
   if(!importRows.length){ host.innerHTML='<div class="preview-note">No se detectaron filas válidas.</div>'; return; }
   const head=`<div class="preview-note">Se detectaron <b>${importRows.length}</b> filas.
@@ -930,7 +945,7 @@ function renderImportPreview(found, fmtLabel){
     <td>${esc(r.tipo_doc||'—')}</td><td><b>${esc(r.folio||'—')}</b></td><td>${r.fecha_emision?fmtDate(r.fecha_emision):'—'}</td>
     <td>${esc(r.rut||'—')}</td><td>${esc(r.nombre||'—')}</td><td class="r money">${CLP(r.monto_total)}</td>
     <td>${r.fecha_vencimiento?fmtDate(r.fecha_vencimiento):'—'}</td></tr>`).join('');
-  host.innerHTML=head+dupNote+`<div class="table-wrap"><table>
+  host.innerHTML=head+softNote+dupNote+`<div class="table-wrap"><table>
     <thead><tr><th>Tipo</th><th>Folio</th><th>Emisión</th><th>RUT</th><th>Nombre</th><th class="r">Total</th><th>Vence</th></tr></thead>
     <tbody>${rows}</tbody></table></div>
     ${importRows.length>8?`<div class="preview-note">… y ${importRows.length-8} filas más.</div>`:''}
@@ -940,28 +955,42 @@ async function doImport(btn){
   btn.disabled=true; btn.innerHTML='<span class="spin"></span> Importando…';
   const now=new Date();
   const lote=`${importFileName} · ${pad2(now.getDate())}-${pad2(now.getMonth()+1)}-${now.getFullYear()} ${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
-  // Dedup por RUT+folio normalizado: contra lo ya cargado y dentro del mismo Excel
-  const existentes=new Set(state.facturas.map(f=>dupKey(f.rut,f.folio)));
-  const vistos=new Set(); let omit=0;
+  // Dedup por RUT+folio normalizado. Si ya existe pero está en blanco (nombre/fecha), lo completa desde el Excel.
+  const existMap={}; state.facturas.forEach(f=>{ existMap[dupKey(f.rut,f.folio)]=f; });
+  const vistos=new Set(); let omit=0; const enrich=[];
   const recsBase=importRows.filter(r=>{ const k=dupKey(r.rut,r.folio);
-    if(existentes.has(k)||vistos.has(k)){ omit++; return false; }
+    if(existMap[k]||vistos.has(k)){
+      const ex=existMap[k];
+      if(ex){ const patch={};
+        if(!(ex.nombre||'').trim() && (r.nombre||'').trim()) patch.nombre=r.nombre;
+        if(!ex.fecha_emision && r.fecha_emision) patch.fecha_emision=r.fecha_emision;
+        if(!ex.fecha_vencimiento && r.fecha_vencimiento) patch.fecha_vencimiento=r.fecha_vencimiento;
+        if(Object.keys(patch).length) enrich.push({id:ex.id,patch});
+      }
+      omit++; return false;
+    }
     vistos.add(k); return true;
   }).map(r=>({...r, estado:'pendiente'}));
-  if(!recsBase.length){ btn.disabled=false; btn.textContent='Importar';
-    toast(`Nada por importar: las ${omit} fila(s) ya existían (mismo RUT y folio)`,'ok');
-    document.getElementById('modalHost').innerHTML=''; return; }
   const postFacturas=recs=>api('/facturas?on_conflict=folio,rut',{ method:'POST',
     headers:{ Prefer:'resolution=ignore-duplicates,return=minimal' }, body:JSON.stringify(recs) });
+  const aplicarEnrich=async()=>{ for(const e of enrich){ try{ await api('/facturas?id=eq.'+e.id,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify(e.patch)}); }catch(_){ } } };
   const finish=()=>{ document.getElementById('modalHost').innerHTML=''; importRows=[]; loadAll(); };
-  const msgOk=`Importación lista: ${recsBase.length} agregada(s)${omit?`, ${omit} duplicada(s) omitida(s)`:''}`;
+  const enrichTxt = enrich.length?`, ${enrich.length} completada(s) con datos faltantes`:'';
+  if(!recsBase.length){
+    await aplicarEnrich();
+    btn.disabled=false; btn.textContent='Importar';
+    toast(enrich.length?`${enrich.length} factura(s) existentes completadas con nombre/fecha`:`Nada por importar: las ${omit} fila(s) ya existían`,'ok');
+    finish(); return;
+  }
+  const msgOk=`Importación lista: ${recsBase.length} agregada(s)${omit?`, ${omit} duplicada(s) omitida(s)`:''}${enrichTxt}`;
   try{
     await postFacturas(recsBase.map(r=>({...r, lote_carga:lote})));
+    await aplicarEnrich();
     toast(msgOk,'ok'); finish();
   }catch(e){
     if(/lote_carga/i.test(e.message)){
-      // La columna aún no existe (o caché sin refrescar): importa sin etiqueta
       try{
-        await postFacturas(recsBase);
+        await postFacturas(recsBase); await aplicarEnrich();
         toast('Importado sin etiqueta de carga. Corre el SQL de lote_carga para agrupar cargas.','err'); finish();
       }catch(e2){ btn.disabled=false; btn.textContent='Reintentar importar'; toast('Error: '+e2.message,'err'); }
     } else { btn.disabled=false; btn.textContent='Reintentar importar'; toast('Error: '+e.message,'err'); }
