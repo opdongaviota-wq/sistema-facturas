@@ -442,7 +442,9 @@ function parseDateSmart(v, fmt){
 function saldoOf(f){ return Math.max(0, (+f.monto_total||0) - (state.saldo[f.id]||0)); }
 function isNC(f){ const t=normKey(f.tipo_doc); return t.includes('nota de credito')||t.includes('nota credito')||t==='nc'; }
 function isND(f){ const t=normKey(f.tipo_doc); return t.includes('nota de debito')||t.includes('nota debito')||t==='nd'; }
-function provNombre(f){ const n=(f.nombre||'').trim(); if(n) return n; const r=(f.rut||'').trim(); return (r&&state._rutNom&&state._rutNom[r])||''; }
+function provNombre(f){ const n=(f.nombre||'').trim(); if(n) return n; const r=normRut(f&&f.rut); return (r&&state._rutNom&&state._rutNom[r])||''; }
+function provKey(f){ const r=normRut(f&&f.rut); return r ? r : ('sinrut|'+normKey(provNombre(f))); }
+function provKeyRN(rut,nombre){ const r=normRut(rut); return r ? r : ('sinrut|'+normKey(nombre)); }
 function normRut(r){ return String(r||'').toLowerCase().replace(/[.\s]/g,''); }
 function normFolio(f){ return (String(f||'').trim().toLowerCase().replace(/\s+/g,'').replace(/^0+/,''))||'0'; }
 function dupKey(rut,folio){ return normRut(rut)+'|'+normFolio(folio); }
@@ -592,7 +594,7 @@ async function loadAll(){
     state.saldo={};
     state.alloc.forEach(a=>{ state.saldo[a.factura_id]=(state.saldo[a.factura_id]||0)+(+a.monto_aplicado||0); });
     state._rutNom={};
-    state.facturas.forEach(f=>{ const r=(f.rut||'').trim(), n=(f.nombre||'').trim(); if(r&&n&&!state._rutNom[r]) state._rutNom[r]=n; });
+    state.facturas.forEach(f=>{ const r=normRut(f.rut), n=(f.nombre||'').trim(); if(r&&n&&!state._rutNom[r]) state._rutNom[r]=n; });
     render();
   }catch(e){
     document.getElementById('main').innerHTML=`<div class="card pad empty"><div class="ico">⚠️</div>
@@ -1071,8 +1073,8 @@ function provListHTML(provs){
   if(q){
     const folioKeys=new Set();
     state.facturas.forEach(f=>{ if(!payFacMatch(f)) return;
-      if((f.folio||'').toLowerCase().includes(q)) folioKeys.add(f.rut||('sinrut|'+provNombre(f))); });
-    list=provs.filter(p=>{ const key=p.rut||('sinrut|'+p.nombre);
+      if((f.folio||'').toLowerCase().includes(q)) folioKeys.add(provKey(f)); });
+    list=provs.filter(p=>{ const key=provKeyRN(p.rut,p.nombre);
       return (p.nombre||'').toLowerCase().includes(q)||(p.rut||'').toLowerCase().includes(q)||folioKeys.has(key); });
   }
   provFilteredCache=list.slice(0,40);
@@ -1082,9 +1084,9 @@ function provListHTML(provs){
     <span class="pi-meta">${esc(p.rut||'sin RUT')} · ${CLP(p.saldo)} · ${p.n} doc.</span></button>`).join('');
 }
 function renderProvList(){ const c=document.getElementById('provList'); if(c) c.innerHTML=provListHTML(proveedoresConSaldo()); }
-function pickProv(i){ const p=provFilteredCache[i]; if(!p) return; selectProv(p.rut||'sinrut|'+p.nombre); }
+function pickProv(i){ const p=provFilteredCache[i]; if(!p) return; selectProv(provKeyRN(p.rut,p.nombre)); }
 function selectedProvHTML(){
-  const p=proveedoresConSaldo().find(x=>(x.rut||'sinrut|'+x.nombre)===pay.rut);
+  const p=proveedoresConSaldo().find(x=>provKeyRN(x.rut,x.nombre)===pay.rut);
   const name=p?(p.nombre||'(sin nombre)'):(provFacturas()[0]?provFacturas()[0].nombre:'Proveedor');
   const saldo=p?CLP(p.saldo):'';
   return `<div class="field" style="max-width:460px">
@@ -1100,7 +1102,7 @@ function proveedoresConSaldo(){
   const map={};
   state.facturas.forEach(f=>{ if(!payFacMatch(f)) return;
     const nom=provNombre(f);
-    const key=f.rut||('sinrut|'+nom);
+    const key=provKey(f);
     if(!map[key]) map[key]={rut:f.rut,nombre:nom,saldo:0,n:0,fac:0};
     if(!map[key].nombre && nom) map[key].nombre=nom;
     map[key].saldo+=saldoFirmado(f); map[key].n++;
@@ -1121,7 +1123,7 @@ function payMiniKPIs(){
 function selectProv(key){ pay.rut=key||null; pay.items={}; pay.medios=freshMedios(); renderPagos(); }
 function provFacturas(){
   return state.facturas.filter(f=>{ if(!payFacMatch(f)) return false;
-    const key=f.rut||('sinrut|'+provNombre(f)); return key===pay.rut; });
+    return provKey(f)===pay.rut; });
 }
 function payRowHTML(f){
   const sal=saldoOf(f); const on=pay.items[f.id]!=null; const nc=isNC(f); const nd=isND(f);
@@ -1381,7 +1383,7 @@ function viewHistorial(){
   </div>
   <div id="histList">${histListHTML()}</div>`;
 }
-function pagoNombre(p){ const n=(p.nombre||'').trim(); if(n) return n; const r=(p.rut||'').trim(); return (r&&state._rutNom&&state._rutNom[r])||''; }
+function pagoNombre(p){ const n=(p.nombre||'').trim(); if(n) return n; const r=normRut(p&&p.rut); return (r&&state._rutNom&&state._rutNom[r])||''; }
 function histListHTML(){
   const q=normKey(histQuery);
   let pagos=[...state.pagos].sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')));
@@ -1673,7 +1675,7 @@ function rep1Range(){ return rep1Periodo==='quincenal'?quincenaRange():rep1Perio
 function rep1Data(){
   const {desde,hasta}=rep1Range(); const map={};
   state.facturas.forEach(f=>{ const em=(f.fecha_emision||'').slice(0,10); if(!em||em<desde||em>hasta) return;
-    const key=f.rut||('sinrut|'+provNombre(f));
+    const key=provKey(f);
     if(!map[key]) map[key]={rut:f.rut||'',nombre:provNombre(f),nFac:0,facturado:0,nc:0,pagado:0,saldo:0};
     if(!map[key].nombre) map[key].nombre=provNombre(f);
     if(isNC(f)){ map[key].nc+=(+f.monto_total||0); }
@@ -1776,14 +1778,14 @@ let rep3ProvCache=[];
 function rep3Buckets(){ const hoy=localDateMinus(0); const fs=weekRange(0).hasta; const pr=weekRange(1);
   return {hoy, finSemana:fs, proxDesde:pr.desde, proxHasta:pr.hasta}; }
 function rep3Provs(){ const map={};
-  state.facturas.forEach(f=>{ if(isNC(f)) return; const key=f.rut||('sinrut|'+provNombre(f));
+  state.facturas.forEach(f=>{ if(isNC(f)) return; const key=provKey(f);
     if(!map[key]) map[key]={key,rut:f.rut||'',nombre:provNombre(f)}; if(!map[key].nombre) map[key].nombre=provNombre(f); });
   return Object.values(map).sort((a,b)=>String(a.nombre||'').localeCompare(String(b.nombre||'')));
 }
 function ncDispMap(){
   const m={};
   state.facturas.forEach(f=>{ if(!isNC(f)) return; const s=saldoOf(f); if(s<=0.0001) return;
-    const key=f.rut||('sinrut|'+provNombre(f)); m[key]=(m[key]||0)+s; });
+    const key=provKey(f); m[key]=(m[key]||0)+s; });
   return m;
 }
 function rep3Data(){
@@ -1792,7 +1794,7 @@ function rep3Data(){
     const v=(f.fecha_vencimiento||'').slice(0,10); if(!v) return;
     let b=null; if(v<hoy) b='vencidas'; else if(v<=finSemana) b='esta'; else if(v>=proxDesde&&v<=proxHasta) b='prox';
     if(!b) return;
-    const key=f.rut||('sinrut|'+provNombre(f)); if(sel.size && !sel.has(key)) return;
+    const key=provKey(f); if(sel.size && !sel.has(key)) return;
     if(!map[key]) map[key]={key,rut:f.rut||'',nombre:provNombre(f),vencidas:[],esta:[],prox:[],sub:0,ncDisp:0,neto:0};
     if(!map[key].nombre) map[key].nombre=provNombre(f);
     map[key][b].push(f); map[key].sub+=s;
