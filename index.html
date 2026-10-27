@@ -168,6 +168,8 @@
   .b-canj{background:#e1f3e8;color:#1f7a47}
   .b-nc{background:#e7eefc;color:#3056a8}
   .b-nd{background:#fbeede;color:#9a5b12}
+  .lnk-edit{background:none;border:none;cursor:pointer;color:var(--teal);font-size:12.5px;padding:1px 5px;margin-left:5px;border-radius:5px}
+  .lnk-edit:hover{background:#eef6f6}
   .row-alert{display:block}
   .ra-warn{display:inline-block;margin-top:4px;font-size:11px;font-weight:600;color:#a6620c;background:#fbeedd;padding:2px 8px;border-radius:6px}
 
@@ -672,7 +674,8 @@ function viewFacturas(){
   const totalPorPagar=state.facturas.reduce((s,f)=>s+saldoFirmado(f),0);
   return `
   <div class="page-head"><h2>Facturas</h2><div class="spacer"></div>
-    ${canCargar()?`<button id="facDelBtn" class="btn danger" style="display:none" onclick="deleteFacturas()">🗑 Eliminar (<span id="facSelN">0</span>)</button>
+    ${canCargar()?`<button id="facVencBtn" class="btn navy" style="display:none" onclick="openEditVenc([...facSel])">📅 Vencimiento (<span id="facVencN">0</span>)</button>
+    <button id="facDelBtn" class="btn danger" style="display:none" onclick="deleteFacturas()">🗑 Eliminar (<span id="facSelN">0</span>)</button>
     ${countNombresPorCompletar()>0?`<button class="btn ghost" onclick="normalizarNombres(this)" title="Rellena el nombre en blanco usando el RUT">✦ Completar nombres (${countNombresPorCompletar()})</button>`:''}
     <button class="btn ghost" onclick="openCargas()">📦 Cargas</button>
     <button class="btn navy" onclick="openImport()">⊕ Importar Excel</button> <button class="btn primary" onclick="openNuevaFactura()">+ Nueva factura</button>`:''}
@@ -729,7 +732,7 @@ function facBodyHTML(){
       <td><b>${esc(f.folio)}</b><br><span style="color:var(--muted);font-size:11.5px">${esc(f.tipo_doc||'')}</span>${isNC(f)?' <span class="badge b-nc">NC</span>':''}${isND(f)?' <span class="badge b-nd">ND</span>':''}${facFilter.imp&&f.created_at?`<br><span style="color:var(--teal);font-size:10.5px">▼ Importada ${fmtDate(f.created_at)}</span>`:''}</td>
       <td>${esc(provNombre(f)||'—')}<br><span style="color:var(--muted);font-size:11.5px">${esc(f.rut||'')}</span></td>
       <td>${fmtDate(f.fecha_emision)}</td>
-      <td>${isNC(f)?'—':(f.fecha_vencimiento?fmtDate(f.fecha_vencimiento):'—')+dueChip(f)}</td>
+      <td>${isNC(f)?'—':(f.fecha_vencimiento?fmtDate(f.fecha_vencimiento):'—')+dueChip(f)+(canCargar()?`<button class="lnk-edit" onclick="openEditVenc([${f.id}])" title="Editar vencimiento">✎</button>`:'')}</td>
       <td class="r money">${isNC(f)?'-'+CLP(f.monto_total):CLP(f.monto_total)}</td>
       <td class="r money" style="color:${isNC(f)?'var(--teal)':(saldoOf(f)>0?'var(--amber)':'var(--green)')}">${isNC(f)?'-'+CLP(saldoOf(f)):CLP(saldoOf(f))}</td>
       <td>${badge}</td>
@@ -744,6 +747,8 @@ function updateFacSelBar(){
   const btn=document.getElementById('facDelBtn'); if(!btn) return;
   btn.style.display=facSel.size>0?'inline-flex':'none';
   const sp=document.getElementById('facSelN'); if(sp) sp.textContent=facSel.size;
+  const vb=document.getElementById('facVencBtn'); if(vb) vb.style.display=facSel.size>0?'inline-flex':'none';
+  const vn=document.getElementById('facVencN'); if(vn) vn.textContent=facSel.size;
 }
 async function deleteFacturasByIds(ids){
   for(let i=0;i<ids.length;i+=150){
@@ -758,6 +763,65 @@ async function deleteFacturas(){
     await deleteFacturasByIds(ids);
     toast(`${ids.length} documento(s) eliminado(s)`,'ok'); facSel.clear(); await loadAll();
   }catch(e){ toast('Error: '+e.message,'err'); }
+}
+/* ---- Editar fecha de vencimiento (individual o masiva) ---- */
+let vencEditIds=[];
+function addDaysISO(iso,n){ const d=new Date(String(iso||'').slice(0,10)+'T00:00:00'); if(isNaN(d)) return ''; d.setDate(d.getDate()+(+n||0)); return dISO(d); }
+function openEditVenc(ids){
+  vencEditIds=(ids||[]).filter(id=>{ const f=state.facturas.find(x=>x.id===id); return f && !isNC(f); });
+  if(!vencEditIds.length){ toast('Selecciona facturas (las NC no tienen vencimiento)','err'); return; }
+  const multi=vencEditIds.length>1;
+  const f0=state.facturas.find(x=>x.id===vencEditIds[0]);
+  const host=document.getElementById('modalHost'); if(!host) return;
+  host.innerHTML=`<div class="card pad" style="border:2px solid var(--teal);margin-top:16px">
+    <div class="card-title">📅 Editar fecha de vencimiento ${multi?`· ${vencEditIds.length} facturas`:`· folio ${esc(f0.folio)}`}</div>
+    <div class="preview-note">Elige el modo. <b>Días desde la emisión</b> recalcula el vencimiento de cada factura según su propia fecha de emisión (útil para proveedores a 15, 20… días).</div>
+    <div class="field" style="max-width:320px"><label>Modo</label>
+      <select id="vmode" onchange="renderVencMode()">
+        <option value="fija">Fecha fija</option>
+        <option value="dias">Días desde la emisión</option>
+      </select></div>
+    <div id="vmodeBox"></div>
+    <div style="display:flex;gap:10px;margin-top:10px">
+      <button class="btn primary" onclick="saveEditVenc(this)">Guardar</button>
+      <button class="btn ghost" onclick="document.getElementById('modalHost').innerHTML=''">Cancelar</button>
+    </div>
+  </div>`;
+  renderVencMode();
+  host.scrollIntoView({behavior:'smooth',block:'center'});
+}
+function renderVencMode(){
+  const mode=document.getElementById('vmode').value;
+  const box=document.getElementById('vmodeBox'); if(!box) return;
+  const f0=state.facturas.find(x=>x.id===vencEditIds[0]);
+  if(mode==='fija'){
+    const def = f0.fecha_vencimiento ? String(f0.fecha_vencimiento).slice(0,10) : addDaysISO(f0.fecha_emision||todayISO(),30);
+    box.innerHTML=`<div class="field" style="max-width:320px"><label>Nueva fecha de vencimiento</label><input type="date" id="vfecha" value="${def}"></div>${vencEditIds.length>1?'<div class="preview-note">Se aplicará la misma fecha a todas las seleccionadas.</div>':''}`;
+  } else {
+    box.innerHTML=`<div class="field" style="max-width:320px"><label>Días desde la emisión</label><input type="number" id="vdias" value="30" min="0" inputmode="numeric"></div>
+      <div class="preview-note">Ej: 15 → cada factura vencerá 15 días después de su propia emisión.</div>`;
+  }
+}
+async function saveEditVenc(btn){
+  const mode=document.getElementById('vmode').value;
+  let updates=[];
+  if(mode==='fija'){
+    const fecha=document.getElementById('vfecha').value; if(!fecha){ toast('Elige una fecha','err'); return; }
+    updates=vencEditIds.map(id=>({id,fecha}));
+  } else {
+    const dias=parseInt(document.getElementById('vdias').value,10); if(isNaN(dias)||dias<0){ toast('Ingresa un número de días válido','err'); return; }
+    updates=vencEditIds.map(id=>{ const f=state.facturas.find(x=>x.id===id); return {id,fecha:addDaysISO(f.fecha_emision||todayISO(),dias)}; }).filter(u=>u.fecha);
+  }
+  if(!updates.length){ toast('No hay cambios aplicables','err'); return; }
+  btn.disabled=true; const orig=btn.innerHTML; btn.innerHTML='<span class="spin"></span> Guardando…';
+  try{
+    const byFecha={}; updates.forEach(u=>{ (byFecha[u.fecha]=byFecha[u.fecha]||[]).push(u.id); });
+    for(const fecha in byFecha){ const ids=byFecha[fecha];
+      for(let i=0;i<ids.length;i+=150){ const chunk=ids.slice(i,i+150);
+        await api('/facturas?id=in.('+chunk.join(',')+')',{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({fecha_vencimiento:fecha})}); } }
+    toast(`${updates.length} vencimiento(s) actualizado(s)`,'ok');
+    facSel.clear(); document.getElementById('modalHost').innerHTML=''; await loadAll();
+  }catch(e){ btn.disabled=false; btn.innerHTML=orig; toast('Error: '+e.message,'err'); }
 }
 /* ---- Panel de cargas (importaciones) ---- */
 function lotesResumen(){
