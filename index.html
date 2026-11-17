@@ -947,6 +947,78 @@ const HEADER_MAP = {
   'total':'monto_total','monto':'monto_total','monto total':'monto_total','valor':'monto_total','total bruto':'monto_total',
   'vencimiento':'fecha_vencimiento','fecha vencimiento':'fecha_vencimiento','f vencimiento':'fecha_vencimiento','vence':'fecha_vencimiento',
 };
+// Celdas combinadas: Excel muestra el valor en todo el bloque, pero el archivo solo lo guarda
+// en la primera celda; las demás filas llegaban vacías (RUT/Nombre en blanco). Se copia el valor
+// hacia abajo dentro de cada bloque combinado (no se tocan combinaciones del encabezado).
+function expandMerges(ws){
+  const merges=ws['!merges']||[]; if(!merges.length||!ws['!ref']) return;
+  const r0=XLSX.utils.decode_range(ws['!ref']).s.r;
+  merges.forEach(m=>{
+    if(m.s.r<=r0 || m.e.r<=m.s.r) return;            // fila de encabezado o combinación solo horizontal
+    const src=ws[XLSX.utils.encode_cell(m.s)]; if(!src) return;
+    for(let R=m.s.r+1;R<=m.e.r;R++){
+      const addr=XLSX.utils.encode_cell({r:R,c:m.s.c});
+      if(!ws[addr] || ws[addr].v==null || ws[addr].v==='') ws[addr]={...src};
+    }
+  });
+}
+// Índice de facturas ya cargadas: por RUT+folio, y las que quedaron SIN RUT agrupadas por folio.
+function indexExistentes(){
+  const porKey={}, sinRut={};
+  state.facturas.forEach(f=>{ porKey[dupKey(f.rut,f.folio)]=f;
+    if(!normRut(f.rut)){ const k=normFolio(f.folio); (sinRut[k]=sinRut[k]||[]).push(f); } });
+  return {porKey,sinRut};
+}
+// Factura ya cargada que corresponde a una fila del Excel: 1) mismo RUT+folio;
+// 2) si no, una cargada SIN RUT con mismo folio y monto (y fecha si ambas la tienen) -> se completa, no se duplica.
+function buscarExistente(idx,r,usados){
+  const ex=idx.porKey[dupKey(r.rut,r.folio)]; if(ex) return ex;
+  if(!normRut(r.rut)) return null;
+  return (idx.sinRut[normFolio(r.folio)]||[]).find(f=>!usados.has(f.id)
+    && Math.abs((+f.monto_total||0)-(+r.monto_total||0))<1
+    && (!f.fecha_emision||!r.fecha_emision||String(f.fecha_emision).slice(0,10)===r.fecha_emision))||null;
+}
+function patchFaltantes(ex,r){ const p={};
+  if(!normRut(ex.rut) && normRut(r.rut)) p.rut=r.rut;
+  if(!(ex.nombre||'').trim() && (r.nombre||'').trim()) p.nombre=r.nombre;
+  if(!(ex.tipo_doc||'').trim() && (r.tipo_doc||'').trim()) p.tipo_doc=r.tipo_doc;
+  if(!ex.fecha_emision && r.fecha_emision) p.fecha_emision=r.fecha_emision;
+  if(!ex.fecha_vencimiento && r.fecha_vencimiento) p.fecha_vencimiento=r.fecha_vencimiento;
+  return p;
+}
+// Clasifica las filas del Excel: nuevas, ya existentes a completar, y omitidas (ya existen completas o repetidas).
+function clasificarImport(rows){
+  const idx=indexExistentes(); const vistos=new Set(), usados=new Set();
+  const nuevas=[], enrich=[]; let omit=0;
+  rows.forEach(r=>{ const k=dupKey(r.rut,r.folio);
+    if(vistos.has(k)){ omit++; return; }
+    vistos.add(k);
+    const ex=buscarExistente(idx,r,usados);
+    if(ex){ usados.add(ex.id); const patch=patchFaltantes(ex,r);
+      if(Object.keys(patch).length) enrich.push({id:ex.id,folio:ex.folio,patch}); else omit++;
+      return; }
+    nuevas.push(r);
+  });
+  return {nuevas,enrich,omit};
+}
+// Pagos registrados sin proveedor (porque sus facturas estaban sin RUT): si todas sus facturas
+// quedan ahora con el mismo RUT, se le asigna ese proveedor. Si mezcla proveedores, se deja igual.
+async function completarPagosSinProveedor(okIds, patchById){
+  const facRut=id=>{ const p=patchById[id]; const f=state.facturas.find(x=>x.id===id)||{};
+    return { rut:(p&&p.rut)||f.rut||'', nombre:(p&&p.nombre)||provNombre(f)||'' }; };
+  const pagoIds=[...new Set(state.alloc.filter(a=>okIds.has(a.factura_id)).map(a=>a.pago_id))];
+  let ok=0, mixtos=0;
+  for(const pid of pagoIds){
+    const p=state.pagos.find(x=>x.id===pid); if(!p || normRut(p.rut)) continue;
+    const facs=state.alloc.filter(a=>a.pago_id===pid).map(a=>facRut(a.factura_id));
+    const ruts=[...new Set(facs.map(x=>normRut(x.rut)))];
+    if(ruts.length!==1 || !ruts[0]){ mixtos++; continue; }
+    const ref=facs.find(x=>x.nombre)||facs[0];
+    try{ await api('/pagos?id=eq.'+pid,{method:'PATCH',headers:{Prefer:'return=minimal'},
+      body:JSON.stringify({rut:ref.rut, nombre:(p.nombre||'').trim()?p.nombre:(ref.nombre||null)})}); ok++; }catch(_){ }
+  }
+  return {ok,mixtos};
+}
 function handleXlsx(file){
   if(!file) return;
   importFileName=file.name||'archivo.xlsx';
@@ -956,6 +1028,7 @@ function handleXlsx(file){
     try{
       const wb=XLSX.read(e.target.result,{type:'array',cellDates:true});
       const ws=wb.Sheets[wb.SheetNames[0]];
+      expandMerges(ws);
       const raw=XLSX.utils.sheet_to_json(ws,{defval:'',raw:true});
       if(!raw.length){ toast('La hoja está vacía','err'); return; }
       const mapping={}; const taken=new Set();
@@ -977,6 +1050,7 @@ function handleXlsx(file){
       importRows=raw.map(r=>{
         const o={tipo_doc:null,folio:null,fecha_emision:null,rut:null,nombre:null,monto_total:0,fecha_vencimiento:null};
         for(const h in mapping){ const field=mapping[h]; const v=r[h];
+          if(v===''||v==null) continue;   // celda vacía: no pisa un dato ya leído de otra columna equivalente
           if(field==='monto_total') o.monto_total=parseMoney(v);
           else if(field==='fecha_emision'||field==='fecha_vencimiento') o[field]=parseDateSmart(v,fmtByField[field]);
           else o[field]=(v===''||v==null)?null:String(v).trim();
@@ -1002,57 +1076,55 @@ function renderImportPreview(found, fmtLabel){
     ${missing.length?`<span class="mismatch">Faltan columnas: ${missing.join(', ')}.</span>`:'Mapeo de columnas correcto ✓'}
     ${fmtLabel?`Formato de fecha detectado: <b>${fmtLabel}</b>.`:''}
     Revisa que las fechas se vean bien antes de importar.</div>`;
-  const exist=new Set(state.facturas.map(f=>dupKey(f.rut,f.folio)));
-  const vist=new Set(); let dupCount=0;
-  importRows.forEach(r=>{ const k=dupKey(r.rut,r.folio); if(exist.has(k)||vist.has(k)) dupCount++; else vist.add(k); });
-  const nuevos=importRows.length-dupCount;
-  const dupNote = dupCount>0 ? `<div class="preview-note abono">Se omitirán <b>${dupCount}</b> fila(s) ya existentes (mismo RUT y folio). Se agregarán <b>${nuevos}</b>.</div>` : '';
-  const rows=importRows.slice(0,8).map(r=>`<tr>
+  const cls=clasificarImport(importRows);
+  const nuevos=cls.nuevas.length, dupCount=cls.omit;
+  const dupNote = (dupCount>0||cls.enrich.length>0) ? `<div class="preview-note abono">${dupCount>0?`Se omitirán <b>${dupCount}</b> fila(s) ya existentes (mismo RUT y folio). `:''}${cls.enrich.length?`Se <b>completarán ${cls.enrich.length}</b> factura(s) ya cargadas que estaban sin RUT/nombre/fecha (folios ${cls.enrich.slice(0,8).map(e=>esc(e.folio)).join(', ')}${cls.enrich.length>8?'…':''}). `:''}Se agregarán <b>${nuevos}</b>.</div>` : '';
+  const sinProv=importRows.filter(r=>!normRut(r.rut)||!(r.nombre||'').trim());
+  const sinProvNote = sinProv.length ? `<div class="preview-note mismatch">⚠ <b>${sinProv.length}</b> fila(s) vienen sin RUT o sin Nombre (folios ${sinProv.slice(0,10).map(r=>esc(r.folio||'?')).join(', ')}${sinProv.length>10?'…':''}). Si en el Excel sí se ven, revisa que esas celdas tengan el dato escrito en cada fila (no solo en una celda de arriba).</div>` : '';
+  const warn='style="background:#fbeedd;color:#a6620c;font-weight:600"';
+  const rows=[...sinProv,...importRows.filter(r=>!sinProv.includes(r))].slice(0,8).map(r=>`<tr>
     <td>${esc(r.tipo_doc||'—')}</td><td><b>${esc(r.folio||'—')}</b></td><td>${r.fecha_emision?fmtDate(r.fecha_emision):'—'}</td>
-    <td>${esc(r.rut||'—')}</td><td>${esc(r.nombre||'—')}</td><td class="r money">${CLP(r.monto_total)}</td>
+    <td ${normRut(r.rut)?'':warn}>${esc(r.rut||'—')}</td><td ${(r.nombre||'').trim()?'':warn}>${esc(r.nombre||'—')}</td><td class="r money">${CLP(r.monto_total)}</td>
     <td>${r.fecha_vencimiento?fmtDate(r.fecha_vencimiento):'—'}</td></tr>`).join('');
-  host.innerHTML=head+softNote+dupNote+`<div class="table-wrap"><table>
+  host.innerHTML=head+softNote+sinProvNote+dupNote+`<div class="table-wrap"><table>
     <thead><tr><th>Tipo</th><th>Folio</th><th>Emisión</th><th>RUT</th><th>Nombre</th><th class="r">Total</th><th>Vence</th></tr></thead>
     <tbody>${rows}</tbody></table></div>
     ${importRows.length>8?`<div class="preview-note">… y ${importRows.length-8} filas más.</div>`:''}
-    <button class="btn primary" ${missing.length?'disabled':''} onclick="doImport(this)">Importar ${nuevos>0?nuevos:importRows.length} facturas</button>`;
+    <button class="btn primary" ${missing.length?'disabled':''} onclick="doImport(this)">${nuevos>0?`Importar ${nuevos} factura(s)${cls.enrich.length?` y completar ${cls.enrich.length}`:''}`:(cls.enrich.length?`Completar ${cls.enrich.length} factura(s)`:'Importar')}</button>`;
 }
 async function doImport(btn){
   btn.disabled=true; btn.innerHTML='<span class="spin"></span> Importando…';
   const now=new Date();
   const lote=`${importFileName} · ${pad2(now.getDate())}-${pad2(now.getMonth()+1)}-${now.getFullYear()} ${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
-  // Dedup por RUT+folio normalizado. Si ya existe pero está en blanco (nombre/fecha), lo completa desde el Excel.
-  const existMap={}; state.facturas.forEach(f=>{ existMap[dupKey(f.rut,f.folio)]=f; });
-  const vistos=new Set(); let omit=0; const enrich=[];
-  const recsBase=importRows.filter(r=>{ const k=dupKey(r.rut,r.folio);
-    if(existMap[k]||vistos.has(k)){
-      const ex=existMap[k];
-      if(ex){ const patch={};
-        if(!(ex.nombre||'').trim() && (r.nombre||'').trim()) patch.nombre=r.nombre;
-        if(!ex.fecha_emision && r.fecha_emision) patch.fecha_emision=r.fecha_emision;
-        if(!ex.fecha_vencimiento && r.fecha_vencimiento) patch.fecha_vencimiento=r.fecha_vencimiento;
-        if(Object.keys(patch).length) enrich.push({id:ex.id,patch});
-      }
-      omit++; return false;
-    }
-    vistos.add(k); return true;
-  }).map(r=>({...r, estado:'pendiente'}));
+  // Dedup por RUT+folio normalizado. Si ya existe pero está en blanco (RUT/nombre/fecha), lo completa desde el Excel
+  // (incluye facturas que quedaron SIN RUT en una carga anterior: se completan, no se duplican).
+  const {nuevas, enrich, omit}=clasificarImport(importRows);
+  const recsBase=nuevas.map(r=>({...r, estado:'pendiente'}));
   const postFacturas=recs=>api('/facturas?on_conflict=folio,rut',{ method:'POST',
     headers:{ Prefer:'resolution=ignore-duplicates,return=minimal' }, body:JSON.stringify(recs) });
-  const aplicarEnrich=async()=>{ for(const e of enrich){ try{ await api('/facturas?id=eq.'+e.id,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify(e.patch)}); }catch(_){ } } };
+  let enrichOk=0, enrichErr=0, pagosTxt='';
+  const aplicarEnrich=async()=>{
+    const okIds=new Set(), patchById={};
+    for(const e of enrich){ try{ await api('/facturas?id=eq.'+e.id,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify(e.patch)});
+      enrichOk++; okIds.add(e.id); patchById[e.id]=e.patch; }catch(_){ enrichErr++; } }
+    if(okIds.size){ const r=await completarPagosSinProveedor(okIds,patchById);
+      if(r.ok) pagosTxt+=`, ${r.ok} pago(s) quedaron con su proveedor`;
+      if(r.mixtos) pagosTxt+=`, ${r.mixtos} pago(s) mezclan proveedores (revísalos en Historial)`; }
+  };
   const finish=()=>{ document.getElementById('modalHost').innerHTML=''; importRows=[]; loadAll(); };
-  const enrichTxt = enrich.length?`, ${enrich.length} completada(s) con datos faltantes`:'';
+  const enrichTxt=()=>(enrichOk?`, ${enrichOk} completada(s) con datos faltantes`:'')+(enrichErr?`, ${enrichErr} no se pudieron completar`:'')+pagosTxt;
   if(!recsBase.length){
     await aplicarEnrich();
     btn.disabled=false; btn.textContent='Importar';
-    toast(enrich.length?`${enrich.length} factura(s) existentes completadas con nombre/fecha`:`Nada por importar: las ${omit} fila(s) ya existían`,'ok');
+    toast(enrichOk ? `${enrichOk} factura(s) existentes completadas con RUT/nombre/fecha${enrichErr?`, ${enrichErr} no se pudieron completar`:''}${pagosTxt}`
+      : (enrichErr ? `No se pudieron completar ${enrichErr} factura(s)` : `Nada por importar: las ${omit} fila(s) ya existían`), enrichErr?'err':'ok');
     finish(); return;
   }
-  const msgOk=`Importación lista: ${recsBase.length} agregada(s)${omit?`, ${omit} duplicada(s) omitida(s)`:''}${enrichTxt}`;
+  const msgOk=()=>`Importación lista: ${recsBase.length} agregada(s)${omit?`, ${omit} duplicada(s) omitida(s)`:''}${enrichTxt()}`;
   try{
     await postFacturas(recsBase.map(r=>({...r, lote_carga:lote})));
     await aplicarEnrich();
-    toast(msgOk,'ok'); finish();
+    toast(msgOk(),'ok'); finish();
   }catch(e){
     if(/lote_carga/i.test(e.message)){
       try{
