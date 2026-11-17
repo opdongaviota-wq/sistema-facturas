@@ -231,6 +231,13 @@
     box-shadow:0 10px 30px rgba(0,0,0,.25);opacity:0;pointer-events:none;transition:.25s;z-index:100;max-width:90vw}
   #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
   #toast.err{background:var(--red)} #toast.ok{background:var(--green)}
+  /* Botón "volver arriba": aparece al bajar en cualquier módulo */
+  #toTop{position:fixed;right:22px;bottom:24px;z-index:90;display:flex;align-items:center;gap:6px;
+    background:var(--navy);color:#fff;border:none;border-radius:24px;padding:10px 16px;font-size:13px;font-weight:600;
+    box-shadow:0 8px 22px rgba(9,28,48,.28);cursor:pointer;opacity:0;transform:translateY(12px);pointer-events:none;transition:.2s}
+  #toTop.show{opacity:1;transform:translateY(0);pointer-events:auto}
+  #toTop:hover{background:var(--teal-dk)}
+  @media print{#toTop{display:none}}
 
   .totbar{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:#f6f9fc;
     border-radius:10px;margin:6px 0 14px;font-size:13px}
@@ -311,6 +318,12 @@
 </div>
 
 <div id="toast"></div>
+<button id="toTop" type="button" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Volver al inicio" title="Volver al inicio">↑ Inicio</button>
+<script>
+  (function(){ const b=document.getElementById('toTop'); let t=false;
+    const upd=()=>{ t=false; b.classList.toggle('show', window.scrollY>400); };
+    window.addEventListener('scroll',()=>{ if(!t){ t=true; requestAnimationFrame(upd); } },{passive:true}); })();
+</script>
 
 <script>
 /* =================== CONFIG =================== */
@@ -674,7 +687,7 @@ function viewFacturas(){
   const totalPorPagar=state.facturas.reduce((s,f)=>s+saldoFirmado(f),0);
   return `
   <div class="page-head"><h2>Facturas</h2><div class="spacer"></div>
-    ${canCargar()?`<button id="facVencBtn" class="btn navy" style="display:none" onclick="openEditVenc([...facSel])">📅 Vencimiento (<span id="facVencN">0</span>)</button>
+    ${canCargar()?`<button id="facVencBtn" class="btn navy" style="display:none" onclick="openEditVenc([...facSel])">✎ Vencimiento / proveedor (<span id="facVencN">0</span>)</button>
     <button id="facDelBtn" class="btn danger" style="display:none" onclick="deleteFacturas()">🗑 Eliminar (<span id="facSelN">0</span>)</button>
     ${countNombresPorCompletar()>0?`<button class="btn ghost" onclick="normalizarNombres(this)" title="Rellena el nombre en blanco usando el RUT">✦ Completar nombres (${countNombresPorCompletar()})</button>`:''}
     <button class="btn ghost" onclick="openCargas()">📦 Cargas</button>
@@ -730,9 +743,9 @@ function facBodyHTML(){
     return `<tr>
       ${chk}
       <td><b>${esc(f.folio)}</b><br><span style="color:var(--muted);font-size:11.5px">${esc(f.tipo_doc||'')}</span>${isNC(f)?' <span class="badge b-nc">NC</span>':''}${isND(f)?' <span class="badge b-nd">ND</span>':''}${facFilter.imp&&f.created_at?`<br><span style="color:var(--teal);font-size:10.5px">▼ Importada ${fmtDate(f.created_at)}</span>`:''}</td>
-      <td>${esc(provNombre(f)||'—')}<br><span style="color:var(--muted);font-size:11.5px">${esc(f.rut||'')}</span></td>
+      <td>${esc(provNombre(f)||'—')}${!provNombre(f)&&!isNC(f)&&canCargar()?`<button class="lnk-edit" onclick="openEditVenc([${f.id}])" title="Agregar nombre del proveedor">✎</button>`:''}<br><span style="color:var(--muted);font-size:11.5px">${esc(f.rut||'')}</span></td>
       <td>${fmtDate(f.fecha_emision)}</td>
-      <td>${isNC(f)?'—':(f.fecha_vencimiento?fmtDate(f.fecha_vencimiento):'—')+dueChip(f)+(canCargar()?`<button class="lnk-edit" onclick="openEditVenc([${f.id}])" title="Editar vencimiento">✎</button>`:'')}</td>
+      <td>${isNC(f)?'—':(f.fecha_vencimiento?fmtDate(f.fecha_vencimiento):'—')+dueChip(f)+(canCargar()?`<button class="lnk-edit" onclick="openEditVenc([${f.id}])" title="Editar vencimiento o proveedor">✎</button>`:'')}</td>
       <td class="r money">${isNC(f)?'-'+CLP(f.monto_total):CLP(f.monto_total)}</td>
       <td class="r money" style="color:${isNC(f)?'var(--teal)':(saldoOf(f)>0?'var(--amber)':'var(--green)')}">${isNC(f)?'-'+CLP(saldoOf(f)):CLP(saldoOf(f))}</td>
       <td>${badge}</td>
@@ -773,13 +786,18 @@ function openEditVenc(ids){
   const multi=vencEditIds.length>1;
   const f0=state.facturas.find(x=>x.id===vencEditIds[0]);
   const host=document.getElementById('modalHost'); if(!host) return;
+  const nom0=(f0.nombre||'').trim();
   host.innerHTML=`<div class="card pad" style="border:2px solid var(--teal);margin-top:16px">
-    <div class="card-title">📅 Editar fecha de vencimiento ${multi?`· ${vencEditIds.length} facturas`:`· folio ${esc(f0.folio)}`}</div>
-    <div class="preview-note">Elige el modo. <b>Días desde la emisión</b> recalcula el vencimiento de cada factura según su propia fecha de emisión (útil para proveedores a 15, 20… días).</div>
-    <div class="field" style="max-width:320px"><label>Modo</label>
+    <div class="card-title">✎ Editar vencimiento y proveedor ${multi?`· ${vencEditIds.length} facturas`:`· folio ${esc(f0.folio)}`}</div>
+    <div class="field" style="max-width:420px"><label>Nombre del proveedor${!multi&&f0.rut?` · RUT ${esc(f0.rut)}`:''}</label>
+      <input id="vnombre" value="${multi?'':esc(nom0)}" placeholder="${multi?'Vacío = no cambiar el nombre':'Ej: COMERCIAL CCU S.A.'}"></div>
+    ${multi?'<div class="preview-note">Si escribes un nombre, se aplicará a todas las seleccionadas.</div>':''}
+    <div class="preview-note">Vencimiento: <b>Días desde la emisión</b> recalcula el vencimiento de cada factura según su propia fecha de emisión (útil para proveedores a 15, 20… días).</div>
+    <div class="field" style="max-width:320px"><label>Vencimiento</label>
       <select id="vmode" onchange="renderVencMode()">
         <option value="fija">Fecha fija</option>
         <option value="dias">Días desde la emisión</option>
+        <option value="nada">No cambiar el vencimiento</option>
       </select></div>
     <div id="vmodeBox"></div>
     <div style="display:flex;gap:10px;margin-top:10px">
@@ -794,6 +812,7 @@ function renderVencMode(){
   const mode=document.getElementById('vmode').value;
   const box=document.getElementById('vmodeBox'); if(!box) return;
   const f0=state.facturas.find(x=>x.id===vencEditIds[0]);
+  if(mode==='nada'){ box.innerHTML=''; return; }
   if(mode==='fija'){
     const def = f0.fecha_vencimiento ? String(f0.fecha_vencimiento).slice(0,10) : addDaysISO(f0.fecha_emision||todayISO(),30);
     box.innerHTML=`<div class="field" style="max-width:320px"><label>Nueva fecha de vencimiento</label><input type="date" id="vfecha" value="${def}"></div>${vencEditIds.length>1?'<div class="preview-note">Se aplicará la misma fecha a todas las seleccionadas.</div>':''}`;
@@ -804,22 +823,33 @@ function renderVencMode(){
 }
 async function saveEditVenc(btn){
   const mode=document.getElementById('vmode').value;
+  const multi=vencEditIds.length>1;
+  // Nombre del proveedor: en una factura se guarda lo escrito (vacío = sin nombre); en varias, vacío = no cambiar.
+  const nomIn=(document.getElementById('vnombre')?.value||'').replace(/\s+/g,' ').trim();
+  const nomIds = multi
+    ? (nomIn ? vencEditIds.filter(id=>{ const f=state.facturas.find(x=>x.id===id); return (f.nombre||'').trim()!==nomIn; }) : [])
+    : vencEditIds.filter(id=>{ const f=state.facturas.find(x=>x.id===id); return (f.nombre||'').trim()!==nomIn; });
   let updates=[];
   if(mode==='fija'){
     const fecha=document.getElementById('vfecha').value; if(!fecha){ toast('Elige una fecha','err'); return; }
     updates=vencEditIds.map(id=>({id,fecha}));
-  } else {
+  } else if(mode==='dias'){
     const dias=parseInt(document.getElementById('vdias').value,10); if(isNaN(dias)||dias<0){ toast('Ingresa un número de días válido','err'); return; }
     updates=vencEditIds.map(id=>{ const f=state.facturas.find(x=>x.id===id); return {id,fecha:addDaysISO(f.fecha_emision||todayISO(),dias)}; }).filter(u=>u.fecha);
   }
-  if(!updates.length){ toast('No hay cambios aplicables','err'); return; }
+  // Solo se envían vencimientos que de verdad cambian
+  updates=updates.filter(u=>{ const f=state.facturas.find(x=>x.id===u.id); return String(f.fecha_vencimiento||'').slice(0,10)!==u.fecha; });
+  if(!updates.length && !nomIds.length){ toast('No hay cambios para guardar','err'); return; }
   btn.disabled=true; const orig=btn.innerHTML; btn.innerHTML='<span class="spin"></span> Guardando…';
   try{
     const byFecha={}; updates.forEach(u=>{ (byFecha[u.fecha]=byFecha[u.fecha]||[]).push(u.id); });
     for(const fecha in byFecha){ const ids=byFecha[fecha];
       for(let i=0;i<ids.length;i+=150){ const chunk=ids.slice(i,i+150);
         await api('/facturas?id=in.('+chunk.join(',')+')',{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({fecha_vencimiento:fecha})}); } }
-    toast(`${updates.length} vencimiento(s) actualizado(s)`,'ok');
+    for(let i=0;i<nomIds.length;i+=150){ const chunk=nomIds.slice(i,i+150);
+      await api('/facturas?id=in.('+chunk.join(',')+')',{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({nombre:nomIn||null})}); }
+    const partes=[]; if(updates.length) partes.push(`${updates.length} vencimiento(s)`); if(nomIds.length) partes.push(`${nomIds.length} nombre(s) de proveedor`);
+    toast(`Actualizado: ${partes.join(' y ')}`,'ok');
     facSel.clear(); document.getElementById('modalHost').innerHTML=''; await loadAll();
   }catch(e){ btn.disabled=false; btn.innerHTML=orig; toast('Error: '+e.message,'err'); }
 }
